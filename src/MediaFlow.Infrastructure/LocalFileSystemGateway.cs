@@ -6,6 +6,14 @@ public sealed class LocalFileSystemGateway : IFileSystemGateway
 {
     public bool FileExists(string path) => File.Exists(path);
 
+    public bool DirectoryExists(string path) => Directory.Exists(path);
+
+    public IEnumerable<string> EnumerateFiles(string path, bool recursive) =>
+        Directory.EnumerateFiles(
+            path,
+            "*",
+            recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+
     public long GetFileLength(string path) => new FileInfo(path).Length;
 
     public DateTimeOffset GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
