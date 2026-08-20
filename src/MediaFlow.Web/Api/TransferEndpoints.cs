@@ -19,18 +19,48 @@ public static class TransferEndpoints
             SafeTransferService transfer,
             CancellationToken ct) =>
         {
-            if (configuration.GetValue("MediaFlow:DryRun", true))
-            {
-                return Results.Conflict(new
-                {
-                    error = "MediaFlow is in DryRun mode. Set MediaFlow:DryRun=false before executing transfers."
-                });
-            }
+            if (IsDryRun(configuration))
+                return DryRunConflict();
 
             try
             {
                 var result = await transfer.ExecuteAsync(request.MediaFileId, request.EventId, ct);
                 return Results.Ok(result);
+            }
+            catch (FileNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or NotSupportedException)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        app.MapPost("/api/v1/operations/{id:guid}/retry", async (
+            Guid id,
+            IConfiguration configuration,
+            IMediaOperationRepository operations,
+            IMediaEventRepository events,
+            IShareRepository shares,
+            IFileSystemGateway fileSystem,
+            SafeTransferService transfer,
+            IClock clock,
+            CancellationToken ct) =>
+        {
+            if (IsDryRun(configuration))
+                return DryRunConflict();
+
+            try
+            {
+                var retry = new OperationRetryService(
+                    operations,
+                    events,
+                    shares,
+                    fileSystem,
+                    transfer,
+                    clock);
+                return Results.Ok(await retry.RetryAsync(id, ct));
             }
             catch (FileNotFoundException ex)
             {
@@ -48,6 +78,14 @@ public static class TransferEndpoints
 
         return app;
     }
+
+    private static bool IsDryRun(IConfiguration configuration) =>
+        configuration.GetValue("MediaFlow:DryRun", true);
+
+    private static IResult DryRunConflict() => Results.Conflict(new
+    {
+        error = "MediaFlow is in DryRun mode. Set MediaFlow:DryRun=false before executing or retrying transfers."
+    });
 }
 
 public sealed record TransferRequest(Guid MediaFileId, Guid EventId);
