@@ -1,4 +1,6 @@
 using MediaFlow.Application.Abstractions;
+using MediaFlow.Core.Domain;
+using MediaFlow.Infrastructure;
 using MediaFlow.Web.Background;
 
 namespace MediaFlow.Web.Api;
@@ -65,6 +67,46 @@ public static class SettingsEndpoints
             });
         });
 
+        app.MapGet("/api/v1/storage", async (
+            IShareRepository shares,
+            IFileSystemGateway fileSystem,
+            CancellationToken ct) =>
+        {
+            var destinations = (await shares.ListAsync(ct))
+                .Where(x => x.Enabled && x.Role is ShareRole.Destination or ShareRole.Both)
+                .ToArray();
+            var items = new List<StorageShareStatus>(destinations.Length);
+
+            foreach (var share in destinations)
+            {
+                long? freeBytes = null;
+                string? error = null;
+                try
+                {
+                    freeBytes = fileSystem.GetAvailableFreeSpace(share.Path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    error = ex.Message;
+                }
+
+                items.Add(new StorageShareStatus(
+                    share.Id,
+                    share.Name,
+                    share.Path,
+                    fileSystem.DirectoryExists(share.Path),
+                    freeBytes,
+                    freeBytes is long value && value < LocalFileSystemGateway.MinimumFreeSpaceReserveBytes,
+                    error));
+            }
+
+            return Results.Ok(new
+            {
+                minimumFreeSpaceReserveBytes = LocalFileSystemGateway.MinimumFreeSpaceReserveBytes,
+                items
+            });
+        });
+
         return app;
     }
 }
@@ -76,3 +118,12 @@ public sealed record RuntimeSettingsRequest(
     int MaxFilesPerSharePerCycle,
     bool AllowFilesystemTimestampFallback,
     string? LiveModeConfirmation = null);
+
+public sealed record StorageShareStatus(
+    Guid ShareId,
+    string Name,
+    string Path,
+    bool Exists,
+    long? AvailableFreeSpaceBytes,
+    bool BelowReserve,
+    string? Error);
