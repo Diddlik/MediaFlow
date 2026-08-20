@@ -7,9 +7,26 @@ services:
       - "8080:8080"
     environment:
       TZ: Europe/Berlin
+
+      # Safe default: discover/index/match only. No copy/move/delete operations.
+      MediaFlow__DryRun: "true"
+
+      # Background reconciliation is enabled even in Dry Run so the routing
+      # preview and media index stay current.
+      MediaFlow__Automation__Enabled: "true"
+      MediaFlow__ReconciliationIntervalSeconds: "300"
+      MediaFlow__Automation__MaxFilesPerSharePerCycle: "200"
+
+      # Keep this false unless filesystem timestamps are trusted as capture time.
+      MediaFlow__Automation__AllowFilesystemTimestampFallback: "false"
+
     volumes:
       - ./data:/app/data
+
+      # Example source shares. The sync software is irrelevant to MediaFlow.
       - /volume1/photos/pavel:/sources/pavel
       - /volume1/photos/elena:/sources/elena
       - /volume1/photos/elisabeth:/sources/elisabeth
+
+      # Common share synchronized back to all participating devices.
       - /volume1/photos/family:/destinations/family
