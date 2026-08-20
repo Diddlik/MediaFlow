@@ -4,14 +4,14 @@ namespace MediaFlow.Infrastructure.Persistence;
 
 public sealed class SqliteDatabaseInitializer(SqliteConnectionFactory connectionFactory) : IDatabaseInitializer
 {
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
-    {
-        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        await using var command = connection.CreateCommand();
-        command.CommandText = """
-            PRAGMA journal_mode=WAL;
-            PRAGMA foreign_keys=ON;
+    public const int CurrentSchemaVersion = 1;
 
+    private static readonly IReadOnlyList<SqliteMigration> Migrations =
+    [
+        new SqliteMigration(
+            1,
+            "initial-schema",
+            """
             CREATE TABLE IF NOT EXISTS shares (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -109,7 +109,115 @@ public sealed class SqliteDatabaseInitializer(SqliteConnectionFactory connection
 
             CREATE INDEX IF NOT EXISTS ix_operations_media_state ON operations(media_file_id, state);
             CREATE INDEX IF NOT EXISTS ix_operations_updated ON operations(updated_at_utc DESC);
+            """)
+    ];
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        ValidateMigrationList();
+
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await EnableWalAsync(connection, cancellationToken);
+        await EnsureMigrationTableAsync(connection, cancellationToken);
+
+        var applied = await GetAppliedVersionsAsync(connection, cancellationToken);
+        if (applied.Count > 0 && applied.Max() > CurrentSchemaVersion)
+        {
+            throw new InvalidOperationException(
+                $"Database schema version {applied.Max()} is newer than this MediaFlow build supports " +
+                $"(maximum {CurrentSchemaVersion}). Refusing to start with an older application version.");
+        }
+
+        foreach (var migration in Migrations.OrderBy(x => x.Version))
+        {
+            if (applied.Contains(migration.Version)) continue;
+            await ApplyMigrationAsync(connection, migration, cancellationToken);
+        }
+    }
+
+    private static async Task EnableWalAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA journal_mode=WAL;";
+        await command.ExecuteScalarAsync(cancellationToken);
+    }
+
+    private static async Task EnsureMigrationTableAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at_utc TEXT NOT NULL
+            );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<HashSet<int>> GetAppliedVersionsAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var result = new HashSet<int>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT version FROM schema_migrations ORDER BY version;";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(reader.GetInt32(0));
+        }
+        return result;
+    }
+
+    private static async Task ApplyMigrationAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        SqliteMigration migration,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = connection.BeginTransaction();
+        try
+        {
+            await using (var command = connection.CreateCommand())
+            {
+                command.Transaction = transaction;
+                command.CommandText = migration.Sql;
+                await command.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await using (var record = connection.CreateCommand())
+            {
+                record.Transaction = transaction;
+                record.CommandText = """
+                    INSERT INTO schema_migrations (version, name, applied_at_utc)
+                    VALUES ($version, $name, $appliedAt);
+                    """;
+                record.Parameters.AddWithValue("$version", migration.Version);
+                record.Parameters.AddWithValue("$name", migration.Name);
+                record.Parameters.AddWithValue("$appliedAt", DateTimeOffset.UtcNow.ToString("O"));
+                await record.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
+    private static void ValidateMigrationList()
+    {
+        if (Migrations.Count == 0 || Migrations[^1].Version != CurrentSchemaVersion)
+            throw new InvalidOperationException("SQLite migration list does not match CurrentSchemaVersion.");
+        if (Migrations.Select(x => x.Version).Distinct().Count() != Migrations.Count)
+            throw new InvalidOperationException("SQLite migration versions must be unique.");
+        if (Migrations.Any(x => x.Version <= 0))
+            throw new InvalidOperationException("SQLite migration versions must be positive integers.");
     }
 }
