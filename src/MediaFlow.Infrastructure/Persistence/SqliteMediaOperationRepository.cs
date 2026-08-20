@@ -30,12 +30,13 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         command.CommandText = $"""
             SELECT {SelectColumns}
             FROM operations
-            WHERE state NOT IN ($completed, $ignored, $failed)
+            WHERE state NOT IN ($completed, $ignored, $failed, $quarantined)
             ORDER BY updated_at_utc;
             """;
         command.Parameters.AddWithValue("$completed", (int)MediaOperationState.Completed);
         command.Parameters.AddWithValue("$ignored", (int)MediaOperationState.Ignored);
         command.Parameters.AddWithValue("$failed", (int)MediaOperationState.Failed);
+        command.Parameters.AddWithValue("$quarantined", (int)MediaOperationState.Quarantined);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
