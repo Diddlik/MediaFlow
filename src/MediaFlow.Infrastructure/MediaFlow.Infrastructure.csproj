@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\MediaFlow.Core\MediaFlow.Core.csproj" />
+    <ProjectReference Include="..\MediaFlow.Application\MediaFlow.Application.csproj" />
+  </ItemGroup>
+</Project>
