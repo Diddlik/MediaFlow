@@ -8,6 +8,7 @@ using MediaFlow.Infrastructure.Persistence;
 using MediaFlow.Infrastructure.Runtime;
 using MediaFlow.Web.Api;
 using MediaFlow.Web.Background;
+using MediaFlow.Web.Integrations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +26,7 @@ builder.Services.AddSingleton<RoutingPreviewService>();
 builder.Services.AddSingleton<SafeTransferService>();
 builder.Services.AddSingleton<TransferCoordinator>();
 builder.Services.AddSingleton<OperationRecoveryService>();
+builder.Services.AddSingleton<EventControlService>();
 builder.Services.AddSingleton<AutomationStatus>();
 
 var runtimeDefaults = new MediaFlowRuntimeSettings(
@@ -37,6 +39,7 @@ var runtimeSettingsPath = builder.Configuration["MediaFlow:RuntimeSettingsPath"]
 builder.Services.AddSingleton<IRuntimeSettingsStore>(
     new JsonRuntimeSettingsStore(runtimeSettingsPath, runtimeDefaults));
 builder.Services.AddHostedService<MediaRoutingWorker>();
+builder.Services.AddHostedService<MqttIntegrationWorker>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -89,6 +92,7 @@ app.MapGet("/api/v1/info", async (
         settings.ReconciliationIntervalSeconds,
         settings.MaxFilesPerSharePerCycle,
         settings.AllowFilesystemTimestampFallback,
+        mqttEnabled = builder.Configuration.GetValue("MediaFlow:Mqtt:Enabled", false),
         allowedRoots
     });
 });
