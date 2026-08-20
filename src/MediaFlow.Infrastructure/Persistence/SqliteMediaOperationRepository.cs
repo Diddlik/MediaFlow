@@ -22,6 +22,28 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         return result;
     }
 
+    public async Task<IReadOnlyList<MediaOperation>> ListIncompleteAsync(CancellationToken cancellationToken = default)
+    {
+        var result = new List<MediaOperation>();
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            SELECT {SelectColumns}
+            FROM operations
+            WHERE state NOT IN ($completed, $ignored, $failed)
+            ORDER BY updated_at_utc;
+            """;
+        command.Parameters.AddWithValue("$completed", (int)MediaOperationState.Completed);
+        command.Parameters.AddWithValue("$ignored", (int)MediaOperationState.Ignored);
+        command.Parameters.AddWithValue("$failed", (int)MediaOperationState.Failed);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(Read(reader));
+        }
+        return result;
+    }
+
     public async Task<MediaOperation?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);
