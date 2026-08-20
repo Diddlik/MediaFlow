@@ -10,6 +10,7 @@ public sealed class MediaRoutingWorker(
     TransferCoordinator transfers,
     IRuntimeSettingsStore runtimeSettings,
     AutomationStatus status,
+    AutomationWakeSignal wakeSignal,
     IClock clock,
     IConfiguration configuration,
     ILogger<MediaRoutingWorker> logger) : BackgroundService
@@ -50,7 +51,7 @@ public sealed class MediaRoutingWorker(
             }
 
             settings = await runtimeSettings.GetAsync(stoppingToken);
-            await Task.Delay(
+            await wakeSignal.WaitAsync(
                 TimeSpan.FromSeconds(settings.ReconciliationIntervalSeconds),
                 stoppingToken);
         }
