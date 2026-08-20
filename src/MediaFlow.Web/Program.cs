@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using MediaFlow.Application.Abstractions;
+using MediaFlow.Application.Services;
 using MediaFlow.Core.Domain;
 using MediaFlow.Infrastructure;
 using MediaFlow.Infrastructure.Persistence;
@@ -12,6 +13,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IFileSystemGateway, LocalFileSystemGateway>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
+builder.Services.AddSingleton<ShareDiscoveryService>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "/app/data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -92,6 +94,42 @@ app.MapGet("/api/v1/shares/{id:guid}/probe", async (
         pathAllowed = IsPathAllowed(share.Path, allowedRoots),
         error
     });
+});
+
+app.MapGet("/api/v1/shares/{id:guid}/scan", async (
+    Guid id,
+    int? limit,
+    IShareRepository repository,
+    ShareDiscoveryService discovery,
+    CancellationToken ct) =>
+{
+    var share = await repository.GetAsync(id, ct);
+    if (share is null)
+    {
+        return Results.NotFound();
+    }
+
+    try
+    {
+        var files = discovery.Scan(share, Math.Clamp(limit ?? 200, 1, 2000));
+        return Results.Ok(new
+        {
+            share.Id,
+            share.Name,
+            share.Path,
+            total = files.Count,
+            stable = files.Count(x => x.State == DiscoveryState.Stable),
+            waitingStable = files.Count(x => x.State == DiscoveryState.WaitingStable),
+            files
+        });
+    }
+    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or DirectoryNotFoundException)
+    {
+        return Results.Problem(
+            title: "Share scan failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
 });
 
 app.MapPost("/api/v1/shares", async (ShareRequest request, IShareRepository repository, CancellationToken ct) =>
