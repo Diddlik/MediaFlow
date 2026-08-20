@@ -52,7 +52,8 @@ If MediaFlow cannot prove the destination is safe, the source is preserved. Inco
 - Dry Run / Live mode safety gate
 - automation status endpoint
 - REST API
-- Home Assistant REST examples
+- optional MQTT event control
+- Home Assistant REST and MQTT examples
 - Docker / Docker Compose
 - GitHub Actions build, tests and container validation
 - GHCR publishing workflow
@@ -109,10 +110,29 @@ GET  /api/v1/shares
 GET  /api/v1/events/
 POST /api/v1/events/{id}/start
 POST /api/v1/events/{id}/stop
+POST /api/v1/events/quick-start
+POST /api/v1/events/quick-stop
 GET  /api/v1/shares/{id}/routing-preview
 GET  /api/v1/operations
 POST /api/v1/recovery
 ```
+
+## MQTT
+
+MQTT is optional and disabled by default. Configure it with `MediaFlow__Mqtt__*` environment variables. MediaFlow subscribes to:
+
+```text
+mediaflow/events/command
+```
+
+and publishes responses/status to:
+
+```text
+mediaflow/events/state
+mediaflow/status
+```
+
+Supported actions are `start`, `stop`, `quick-start`, and `quick-stop`. MQTT controls event windows only and never bypasses the Dry Run / Live transfer safety gate. See the Home Assistant example for payloads.
 
 ## Development
 
@@ -133,4 +153,4 @@ The Docker image additionally contains ExifTool and a container healthcheck.
 
 ## Status
 
-Active development. Core routing, safety, recovery, background automation and Docker deployment are implemented; additional integrations and production hardening are ongoing.
+Active development. Core routing, safety, recovery, background automation, Docker deployment, REST and optional MQTT control are implemented; additional production hardening is ongoing.
