@@ -3,6 +3,7 @@ using MediaFlow.Application.Abstractions;
 using MediaFlow.Application.Services;
 using MediaFlow.Core.Domain;
 using MediaFlow.Infrastructure;
+using MediaFlow.Infrastructure.Metadata;
 using MediaFlow.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,8 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IFileSystemGateway, LocalFileSystemGateway>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
 builder.Services.AddSingleton<ShareDiscoveryService>();
+builder.Services.AddSingleton<IMediaMetadataExtractor, ExifToolMetadataExtractor>();
+builder.Services.AddSingleton<MetadataPreviewService>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -127,6 +130,44 @@ app.MapGet("/api/v1/shares/{id:guid}/scan", async (
     {
         return Results.Problem(
             title: "Share scan failed",
+            detail: ex.Message,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
+
+app.MapGet("/api/v1/shares/{id:guid}/metadata-preview", async (
+    Guid id,
+    int? limit,
+    IShareRepository repository,
+    MetadataPreviewService previewService,
+    CancellationToken ct) =>
+{
+    var share = await repository.GetAsync(id, ct);
+    if (share is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (share.Role == ShareRole.Destination)
+    {
+        return Results.BadRequest(new { error = "Metadata preview is only available for source shares." });
+    }
+
+    try
+    {
+        var preview = await previewService.PreviewAsync(share, Math.Clamp(limit ?? 10, 1, 50), ct);
+        return Results.Ok(new
+        {
+            share.Id,
+            share.Name,
+            total = preview.Count,
+            items = preview
+        });
+    }
+    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+    {
+        return Results.Problem(
+            title: "Metadata preview failed",
             detail: ex.Message,
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
