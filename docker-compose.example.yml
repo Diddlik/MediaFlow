@@ -1,6 +1,6 @@
 services:
   mediaflow:
-    image: ghcr.io/OWNER/mediaflow:latest
+    image: ghcr.io/diddlik/mediaflow:latest
     container_name: mediaflow
     restart: unless-stopped
     ports:
@@ -8,19 +8,16 @@ services:
     environment:
       TZ: Europe/Berlin
 
-      # Safe default: discover/index/match only. No copy/move/delete operations.
+      # Initial defaults. After settings are saved in the Web UI,
+      # ./data/runtime-settings.json takes precedence for these runtime values.
       MediaFlow__DryRun: "true"
-
-      # Background reconciliation is enabled even in Dry Run so the routing
-      # preview and media index stay current.
       MediaFlow__Automation__Enabled: "true"
       MediaFlow__ReconciliationIntervalSeconds: "300"
       MediaFlow__Automation__MaxFilesPerSharePerCycle: "200"
-
-      # Keep this false unless filesystem timestamps are trusted as capture time.
       MediaFlow__Automation__AllowFilesystemTimestampFallback: "false"
 
     volumes:
+      # SQLite database and persistent runtime settings.
       - ./data:/app/data
 
       # Example source shares. The sync software is irrelevant to MediaFlow.
@@ -30,3 +27,10 @@ services:
 
       # Common share synchronized back to all participating devices.
       - /volume1/photos/family:/destinations/family
+
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
