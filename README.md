@@ -18,13 +18,16 @@ The default destructive operation is **Safe Move**:
 2. Read capture metadata with ExifTool.
 3. Match exactly one event.
 4. Persist the media file and operation state.
-5. Copy into a destination-side staging directory.
-6. Verify size and SHA-256.
-7. Commit the verified file to its final destination.
-8. Persist `DestinationCommitted`.
-9. Delete the source only after the committed destination is verified.
+5. Check destination capacity before opening the staging copy.
+6. Copy into a destination-side staging directory.
+7. Verify size and SHA-256.
+8. Commit the verified file to its final destination.
+9. Persist `DestinationCommitted` and `SourceFinalizePending`.
+10. Delete the source only after the committed destination is verified.
 
-If MediaFlow cannot prove the destination is safe, the source is preserved. Incomplete operations are reconciled after restart.
+If MediaFlow cannot prove the destination is safe, the source is preserved. Incomplete operations are reconciled after restart. Transfers for the same media file are serialized in-process to prevent concurrent duplicate execution.
+
+Real filesystem copies keep a **512 MiB free-space reserve in addition to the file being copied** whenever free capacity can be determined. If capacity cannot be determined, MediaFlow reports it as unknown rather than guessing.
 
 **Dry Run is enabled by default.** Live transfers require an explicit confirmation in the Web UI.
 
@@ -47,10 +50,13 @@ If MediaFlow cannot prove the destination is safe, the source is preserved. Inco
 - Safe Move and Copy
 - persistent operation state machine
 - restart recovery and explicit retry
-- background reconciliation worker
+- end-to-end Safe Move failure-path tests
+- per-media transfer serialization
+- periodic reconciliation worker
+- FileSystemWatcher wake-ups with periodic reconciliation fallback
 - persistent runtime settings
 - Dry Run / Live mode safety gate
-- automation status endpoint
+- automation and destination-storage status
 - REST API
 - optional MQTT event control
 - Home Assistant REST and MQTT examples
@@ -94,7 +100,8 @@ The `data` volume contains the SQLite database and persistent runtime settings. 
 4. Create a Source Group containing the phone shares.
 5. Create and start an Event.
 6. Use Routing Preview and verify capture times and destination paths.
-7. Only after testing, explicitly enable Live mode if Safe Move/Copy should run automatically.
+7. Check the destination storage status.
+8. Only after testing, explicitly enable Live mode if Safe Move/Copy should run automatically.
 
 ## REST endpoints
 
@@ -104,6 +111,7 @@ Important endpoints include:
 GET  /health
 GET  /api/v1/info
 GET  /api/v1/status
+GET  /api/v1/storage
 GET  /api/v1/settings
 PUT  /api/v1/settings
 GET  /api/v1/shares
@@ -140,17 +148,21 @@ Supported actions are `start`, `stop`, `quick-start`, and `quick-stop`. MQTT con
 dotnet restore MediaFlow.sln
 dotnet build MediaFlow.sln -c Release
 dotnet test MediaFlow.sln -c Release
+docker build -t mediaflow:dev .
 ```
 
-The Docker image additionally contains ExifTool and a container healthcheck.
+CI validates the Release build, automated tests and Docker image. The runtime image contains ExifTool and a container healthcheck.
 
 ## Documentation
 
 - [Implementation specification](docs/IMPLEMENTATION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Backup and restore](docs/BACKUP-RESTORE.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 - [Home Assistant example](examples/home-assistant/README.md)
 
 ## Status
 
-Active development. Core routing, safety, recovery, background automation, Docker deployment, REST and optional MQTT control are implemented; additional production hardening is ongoing.
+Active development. Core routing, source-deletion safety, recovery, watcher/reconciliation automation, storage protection, Docker deployment, REST and optional MQTT control are implemented. Remaining work before v1.0 includes formal database migration/versioning, a dedicated quarantine workflow, OpenAPI and stable release/versioning policy.
