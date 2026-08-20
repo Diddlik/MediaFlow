@@ -58,9 +58,9 @@ public static class EventEndpoints
         {
             var existing = await repository.GetAsync(id, ct);
             if (existing is null) return Results.NotFound();
-            if (existing.Status == MediaEventStatus.Archived || existing.Status == MediaEventStatus.Cancelled)
+            if (existing.Status != MediaEventStatus.Planned)
             {
-                return Results.Conflict(new { error = "Archived or cancelled events cannot be started." });
+                return Results.Conflict(new { error = "Only planned events can be started. Closed events keep their historical capture window." });
             }
 
             var started = Copy(existing, startAt: clock.UtcNow, endAt: null, status: MediaEventStatus.Active);
