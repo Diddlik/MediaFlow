@@ -14,6 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddOpenApi();
 
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IFileSystemGateway, LocalFileSystemGateway>();
@@ -71,6 +72,7 @@ if (recoveryReport.Total > 0)
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.MapOpenApi();
 
 app.MapGet("/health", () => Results.Ok(new
 {
@@ -89,6 +91,9 @@ app.MapGet("/api/v1/info", async (
         name = "MediaFlow",
         status = "automation",
         utcNow = clock.UtcNow,
+        databaseSchemaVersion = SqliteDatabaseInitializer.CurrentSchemaVersion,
+        openApiDocument = "/openapi/v1.json",
+        apiDocs = "/api-docs.html",
         settings.DryRun,
         settings.AutomationEnabled,
         settings.ReconciliationIntervalSeconds,
