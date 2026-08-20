@@ -19,21 +19,126 @@
     <section class="panel">
       <div class="section-title">
         <div>
-          <h2>Shares</h2>
-          <p>Define filesystem folders visible inside the container. The sync tool itself does not matter.</p>
+          <h2>Events</h2>
+          <p>Create a vacation or other capture-time window and start/stop it from here.</p>
         </div>
-        <button id="newShare" type="button">New share</button>
+        <button id="newEvent" type="button">New event</button>
       </div>
-      <div id="shareList" class="share-list"></div>
+      <div id="eventList" class="card-list"></div>
+    </section>
+
+    <section id="eventFormPanel" class="panel collapsible hidden">
+      <h2 id="eventFormTitle">Add event</h2>
+      <form id="eventForm">
+        <input id="eventId" type="hidden" />
+        <div class="grid">
+          <label>Name<input id="eventName" required placeholder="Croatia 2026" /></label>
+          <label>Type<input id="eventType" placeholder="Vacation" /></label>
+          <label>Source group<select id="eventSourceGroup" required></select></label>
+          <label>Destination share<select id="eventDestination" required></select></label>
+          <label>Start<input id="eventStart" type="datetime-local" required /></label>
+          <label>End<input id="eventEnd" type="datetime-local" /></label>
+          <label>Status
+            <select id="eventStatus">
+              <option value="Planned">Planned</option>
+              <option value="Active">Active</option>
+              <option value="Closed">Closed</option>
+            </select>
+          </label>
+          <label>Operation
+            <select id="eventOperation">
+              <option value="SafeMove">Safe Move</option>
+              <option value="Copy">Copy</option>
+            </select>
+          </label>
+          <label>Conflict strategy
+            <select id="eventConflict">
+              <option value="AppendSourceName">Append source name</option>
+              <option value="AppendCounter">Append counter</option>
+              <option value="Quarantine">Quarantine</option>
+            </select>
+          </label>
+          <label>Duplicate strategy
+            <select id="eventDuplicate">
+              <option value="SafeMoveToExisting">Safe move to verified existing</option>
+              <option value="KeepBoth">Keep both</option>
+              <option value="KeepExisting">Keep existing, preserve source</option>
+              <option value="SkipAndRecord">Skip and record</option>
+            </select>
+          </label>
+        </div>
+        <label>Destination folder template
+          <input id="eventTemplate" value="{event.name}" placeholder="{year}/{event.name}" />
+        </label>
+        <div class="actions">
+          <button type="submit">Save event</button>
+          <button id="cancelEvent" class="secondary" type="button">Cancel</button>
+        </div>
+        <p id="eventMessage" class="message"></p>
+      </form>
     </section>
 
     <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Routing preview</h2>
+          <p>Scan stable media, read capture metadata, persist the index and show the matching event and destination.</p>
+        </div>
+      </div>
+      <div class="inline-controls">
+        <select id="routingSource"></select>
+        <button id="previewRouting" type="button">Preview routing</button>
+      </div>
+      <div id="routingSummary" class="message"></div>
+      <div id="routingList" class="card-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Source groups</h2>
+          <p>Combine any number of source shares. A group can represent a family, cameras for a project, or any other collection.</p>
+        </div>
+        <button id="newGroup" type="button">New group</button>
+      </div>
+      <div id="groupList" class="card-list"></div>
+    </section>
+
+    <section id="groupFormPanel" class="panel collapsible hidden">
+      <h2 id="groupFormTitle">Add source group</h2>
+      <form id="groupForm">
+        <input id="groupId" type="hidden" />
+        <label>Name<input id="groupName" required placeholder="Family" /></label>
+        <fieldset>
+          <legend>Source shares</legend>
+          <div id="groupShareChoices" class="checks"></div>
+        </fieldset>
+        <div class="actions">
+          <button type="submit">Save group</button>
+          <button id="cancelGroup" class="secondary" type="button">Cancel</button>
+        </div>
+        <p id="groupMessage" class="message"></p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Shares</h2>
+          <p>Define filesystem folders visible inside the container. Resilio, Syncthing, Nextcloud or another sync tool may manage them.</p>
+        </div>
+        <button id="newShare" type="button">New share</button>
+      </div>
+      <div id="shareList" class="card-list"></div>
+    </section>
+
+    <section id="shareFormPanel" class="panel collapsible hidden">
       <h2 id="formTitle">Add share</h2>
       <form id="shareForm">
         <input id="shareId" type="hidden" />
         <div class="grid">
-          <label>Name<input id="name" required placeholder="Pavel Phone" /></label>
-          <label>Path<input id="path" required placeholder="/sources/pavel" /></label>
+          <label>Name<input id="name" required placeholder="Phone 1" /></label>
+          <label>Path<input id="path" required placeholder="/sources/phone1" /></label>
           <label>Role
             <select id="role">
               <option value="Source">Source</option>
@@ -64,6 +169,17 @@
         </div>
         <p id="formMessage" class="message"></p>
       </form>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Operations</h2>
+          <p>Recent copy, verification, commit, source-finalization and recovery states.</p>
+        </div>
+        <button id="refreshOperations" type="button">Refresh</button>
+      </div>
+      <div id="operationList" class="card-list"></div>
     </section>
   </main>
 
