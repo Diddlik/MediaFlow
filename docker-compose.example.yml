@@ -16,6 +16,17 @@ services:
       MediaFlow__Automation__MaxFilesPerSharePerCycle: "200"
       MediaFlow__Automation__AllowFilesystemTimestampFallback: "false"
 
+      # Optional MQTT integration. Disabled by default.
+      MediaFlow__Mqtt__Enabled: "false"
+      MediaFlow__Mqtt__Host: "192.168.1.10"
+      MediaFlow__Mqtt__Port: "1883"
+      MediaFlow__Mqtt__ClientId: "mediaflow"
+      MediaFlow__Mqtt__BaseTopic: "mediaflow"
+      MediaFlow__Mqtt__UseTls: "false"
+      MediaFlow__Mqtt__ReconnectSeconds: "5"
+      # MediaFlow__Mqtt__Username: "mediaflow"
+      # MediaFlow__Mqtt__Password: "change-me"
+
     volumes:
       # SQLite database and persistent runtime settings.
       - ./data:/app/data
