@@ -56,13 +56,17 @@ async function loadRuntimeSettings() {
 async function loadAutomationStatus() {
   const target = settingsById('automationStatus');
   try {
-    const result = await settingsRequest('/api/v1/status');
+    const [result, storage] = await Promise.all([
+      settingsRequest('/api/v1/status'),
+      settingsRequest('/api/v1/storage')
+    ]);
     const automation = result.automation;
     const mode = result.mode === 'live' ? 'LIVE' : 'Dry Run';
     const enabled = result.automationEnabled ? 'automation enabled' : 'automation disabled';
+    const storageText = formatStorageStatus(storage);
 
     if (!automation.lastCycleStartedAt) {
-      target.textContent = `${mode} · ${enabled} · no automation cycle recorded yet`;
+      target.textContent = `${mode} · ${enabled} · no automation cycle recorded yet · ${storageText}`;
       return;
     }
 
@@ -70,10 +74,34 @@ async function loadAutomationStatus() {
       ? new Date(automation.lastCycleCompletedAt).toLocaleString()
       : 'running';
     const error = automation.lastError ? ` · last error: ${automation.lastError}` : '';
-    target.textContent = `${mode} · ${enabled} · last cycle ${completed} · sources ${automation.lastSourceShares} · matched ${automation.lastMatched} · executed ${automation.lastExecuted} · skipped ${automation.lastSkipped} · errors ${automation.lastErrors}${error}`;
+    target.textContent = `${mode} · ${enabled} · last cycle ${completed} · sources ${automation.lastSourceShares} · matched ${automation.lastMatched} · executed ${automation.lastExecuted} · skipped ${automation.lastSkipped} · errors ${automation.lastErrors}${error} · ${storageText}`;
   } catch (error) {
     target.textContent = `Status failed: ${error.message}`;
   }
+}
+
+function formatStorageStatus(storage) {
+  if (!storage?.items?.length) return 'no destination storage configured';
+  const reserve = formatBytes(storage.minimumFreeSpaceReserveBytes);
+  const items = storage.items.map(item => {
+    if (!item.exists) return `${item.name}: path missing`;
+    if (item.availableFreeSpaceBytes == null) return `${item.name}: free space unknown`;
+    return `${item.name}: ${formatBytes(item.availableFreeSpaceBytes)} free${item.belowReserve ? ' LOW' : ''}`;
+  });
+  return `storage ${items.join(', ')} · reserve ${reserve}`;
+}
+
+function formatBytes(value) {
+  if (value == null || Number.isNaN(Number(value))) return 'unknown';
+  const bytes = Number(value);
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let index = 0;
+  let number = bytes;
+  while (number >= 1024 && index < units.length - 1) {
+    number /= 1024;
+    index++;
+  }
+  return `${number.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 settingsById('settingsForm').addEventListener('submit', async (event) => {
