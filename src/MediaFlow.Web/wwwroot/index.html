@@ -19,6 +19,38 @@
     <section class="panel">
       <div class="section-title">
         <div>
+          <h2>Automation & safety</h2>
+          <p>Runtime settings are persisted in the MediaFlow data directory and take effect without restarting the container.</p>
+        </div>
+        <button id="refreshAutomationStatus" type="button">Refresh status</button>
+      </div>
+      <div id="automationStatus" class="message">Loading automation status…</div>
+      <form id="settingsForm">
+        <div class="grid">
+          <label>Reconciliation interval (seconds)
+            <input id="settingsInterval" type="number" min="15" max="86400" required />
+          </label>
+          <label>Max files per source / cycle
+            <input id="settingsMaxFiles" type="number" min="1" max="2000" required />
+          </label>
+        </div>
+        <div class="checks">
+          <label><input id="settingsAutomationEnabled" type="checkbox" /> Automation enabled</label>
+          <label><input id="settingsDryRun" type="checkbox" /> Dry Run — never copy or delete media</label>
+          <label><input id="settingsTimestampFallback" type="checkbox" /> Allow filesystem timestamp fallback for automatic routing</label>
+        </div>
+        <p class="meta">Disabling Dry Run enables real Copy/Safe Move operations. MediaFlow asks for an explicit confirmation token before this change is accepted.</p>
+        <div class="actions">
+          <button type="submit">Save settings</button>
+          <button id="resetSettings" class="secondary" type="button">Reset to Docker defaults</button>
+        </div>
+        <p id="settingsMessage" class="message"></p>
+      </form>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
           <h2>Events</h2>
           <p>Create a vacation or other capture-time window and start/stop it from here.</p>
         </div>
@@ -184,5 +216,6 @@
   </main>
 
   <script src="/app.js"></script>
+  <script src="/settings.js"></script>
 </body>
 </html>
