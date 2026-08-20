@@ -1,0 +1,15 @@
+services:
+  mediaflow:
+    image: ghcr.io/OWNER/mediaflow:latest
+    container_name: mediaflow
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Berlin
+    volumes:
+      - ./data:/app/data
+      - /volume1/photos/pavel:/sources/pavel
+      - /volume1/photos/elena:/sources/elena
+      - /volume1/photos/elisabeth:/sources/elisabeth
+      - /volume1/photos/family:/destinations/family
