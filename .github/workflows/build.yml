@@ -32,6 +32,9 @@ jobs:
       - name: Test
         run: dotnet test MediaFlow.sln --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
 
+      - name: Build Docker image
+        run: docker build --tag mediaflow:ci .
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
