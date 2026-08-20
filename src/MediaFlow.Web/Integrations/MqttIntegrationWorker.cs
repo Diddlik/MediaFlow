@@ -64,12 +64,15 @@ public sealed class MqttIntegrationWorker(
             catch (Exception ex)
             {
                 logger.LogError(ex, "MQTT command handling failed");
-                await PublishAsync(client, eventStateTopic, new
+                if (client.IsConnected)
                 {
-                    ok = false,
-                    error = ex.Message,
-                    at = DateTimeOffset.UtcNow
-                }, retain: false, CancellationToken.None);
+                    await PublishAsync(client, eventStateTopic, new
+                    {
+                        ok = false,
+                        error = ex.Message,
+                        at = DateTimeOffset.UtcNow
+                    }, retain: false, CancellationToken.None);
+                }
             }
             finally
             {
@@ -122,13 +125,20 @@ public sealed class MqttIntegrationWorker(
 
         if (client.IsConnected)
         {
-            try { await client.DisconnectAsync(); }
-            catch (Exception ex) { logger.LogDebug(ex, "MQTT disconnect failed during shutdown"); }
+            try
+            {
+                var disconnectOptions = factory.CreateClientDisconnectOptionsBuilder().Build();
+                await client.DisconnectAsync(disconnectOptions, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "MQTT disconnect failed during shutdown");
+            }
         }
     }
 
     private async Task HandleCommandAsync(
-        dynamic client,
+        IMqttClient client,
         string payload,
         string eventStateTopic,
         string statusTopic,
@@ -242,7 +252,7 @@ public sealed class MqttIntegrationWorker(
         await PublishStatusAsync(client, statusTopic, cancellationToken);
     }
 
-    private async Task PublishStatusAsync(dynamic client, string topic, CancellationToken cancellationToken)
+    private async Task PublishStatusAsync(IMqttClient client, string topic, CancellationToken cancellationToken)
     {
         var settings = await runtimeSettings.GetAsync(cancellationToken);
         await PublishAsync(client, topic, new
@@ -257,7 +267,7 @@ public sealed class MqttIntegrationWorker(
     }
 
     private Task PublishInvalidAsync(
-        dynamic client,
+        IMqttClient client,
         string topic,
         string action,
         string error,
@@ -272,7 +282,7 @@ public sealed class MqttIntegrationWorker(
         }, false, cancellationToken);
 
     private async Task PublishAsync(
-        dynamic client,
+        IMqttClient client,
         string topic,
         object payload,
         bool retain,
