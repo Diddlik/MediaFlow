@@ -38,7 +38,7 @@ public sealed class SafeTransferService(
             return new TransferExecutionResult(
                 incomplete,
                 false,
-                (int)incomplete.State >= (int)MediaOperationState.DestinationCommitted,
+                HasCommittedDestination(incomplete.State),
                 "An incomplete operation already exists for this media file. Recovery must resolve it first.");
         }
 
@@ -210,7 +210,7 @@ public sealed class SafeTransferService(
         {
             operation = Transition(
                 operation,
-                (int)operation.State >= (int)MediaOperationState.DestinationCommitted
+                HasCommittedDestination(operation.State)
                     ? MediaOperationState.SourceFinalizePending
                     : MediaOperationState.RetryPending,
                 retryCount: operation.RetryCount + 1,
@@ -376,6 +376,11 @@ public sealed class SafeTransferService(
             LastSeenAt = clock.UtcNow
         }, cancellationToken);
     }
+
+    private static bool HasCommittedDestination(MediaOperationState state) =>
+        state is MediaOperationState.DestinationCommitted or
+            MediaOperationState.SourceFinalizePending or
+            MediaOperationState.Completed;
 
     private static MediaOperation Transition(
         MediaOperation source,
