@@ -158,6 +158,8 @@ CI validates the Release build, automated tests and Docker image. The runtime im
 - [Implementation specification](docs/IMPLEMENTATION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Changelog](CHANGELOG.md)
+- [Release process](docs/RELEASING.md)
 - [Backup and restore](docs/BACKUP-RESTORE.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
@@ -165,4 +167,4 @@ CI validates the Release build, automated tests and Docker image. The runtime im
 
 ## Status
 
-Active development. Core routing, source-deletion safety, recovery, watcher/reconciliation automation, storage protection, Docker deployment, REST and optional MQTT control are implemented. Remaining work before v1.0 includes formal database migration/versioning, a dedicated quarantine workflow, OpenAPI and stable release/versioning policy.
+Active development. Core routing, source-deletion safety, recovery, watcher/reconciliation automation, storage protection, Docker deployment, REST and optional MQTT control are implemented. Remaining work before v1.0 includes formal database migration/versioning, a dedicated quarantine workflow and OpenAPI.
