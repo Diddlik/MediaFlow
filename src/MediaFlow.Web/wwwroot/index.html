@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MediaFlow</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>MediaFlow</h1>
+      <p>Self-hosted media routing for synchronized folders.</p>
+    </div>
+    <span id="status" class="badge">Loading…</span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Shares</h2>
+          <p>Define filesystem folders visible inside the container. The sync tool itself does not matter.</p>
+        </div>
+        <button id="newShare" type="button">New share</button>
+      </div>
+      <div id="shareList" class="share-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2 id="formTitle">Add share</h2>
+      <form id="shareForm">
+        <input id="shareId" type="hidden" />
+        <div class="grid">
+          <label>Name<input id="name" required placeholder="Pavel Phone" /></label>
+          <label>Path<input id="path" required placeholder="/sources/pavel" /></label>
+          <label>Role
+            <select id="role">
+              <option value="Source">Source</option>
+              <option value="Destination">Destination</option>
+              <option value="Both">Both</option>
+            </select>
+          </label>
+          <label>Preset<select id="preset"></select></label>
+          <label>Owner<input id="owner" placeholder="Optional" /></label>
+          <label>Default timezone<input id="timezone" placeholder="Europe/Berlin" /></label>
+          <label>File stability (seconds)<input id="stability" type="number" min="1" max="3600" value="30" /></label>
+        </div>
+
+        <label>Ignore patterns
+          <textarea id="ignore" rows="5" placeholder="One pattern per line"></textarea>
+        </label>
+
+        <div class="checks">
+          <label><input id="enabled" type="checkbox" checked /> Enabled</label>
+          <label><input id="recursive" type="checkbox" checked /> Recursive</label>
+          <label><input id="images" type="checkbox" checked /> Images</label>
+          <label><input id="videos" type="checkbox" checked /> Videos</label>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Save share</button>
+          <button id="cancelEdit" class="secondary" type="button">Cancel</button>
+        </div>
+        <p id="formMessage" class="message"></p>
+      </form>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
