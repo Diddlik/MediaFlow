@@ -87,6 +87,28 @@ public sealed class SqliteDatabaseInitializer(SqliteConnectionFactory connection
 
             CREATE UNIQUE INDEX IF NOT EXISTS ix_media_files_source ON media_files(source_share_id, source_path);
             CREATE INDEX IF NOT EXISTS ix_media_files_captured_at ON media_files(captured_at_utc);
+
+            CREATE TABLE IF NOT EXISTS operations (
+                id TEXT PRIMARY KEY,
+                media_file_id TEXT NOT NULL,
+                event_id TEXT NULL,
+                state INTEGER NOT NULL,
+                source_path TEXT NOT NULL,
+                staging_path TEXT NULL,
+                destination_path TEXT NULL,
+                source_hash TEXT NULL,
+                destination_hash TEXT NULL,
+                retry_count INTEGER NOT NULL,
+                last_error TEXT NULL,
+                started_at_utc TEXT NOT NULL,
+                completed_at_utc TEXT NULL,
+                updated_at_utc TEXT NOT NULL,
+                FOREIGN KEY (media_file_id) REFERENCES media_files(id) ON DELETE CASCADE,
+                FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_operations_media_state ON operations(media_file_id, state);
+            CREATE INDEX IF NOT EXISTS ix_operations_updated ON operations(updated_at_utc DESC);
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
