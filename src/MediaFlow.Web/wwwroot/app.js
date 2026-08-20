@@ -67,6 +67,7 @@ function renderShares() {
       <div class="card-actions">
         <button type="button" onclick="probeShare('${share.id}')">Test</button>
         ${share.role !== 'Destination' ? `<button type="button" onclick="scanShare('${share.id}')">Scan</button>` : ''}
+        ${share.role !== 'Destination' ? `<button type="button" onclick="metadataPreview('${share.id}')">Metadata</button>` : ''}
         <button type="button" onclick="editShare('${share.id}')">Edit</button>
         <button type="button" class="danger" onclick="deleteShare('${share.id}')">Delete</button>
       </div>
@@ -95,6 +96,26 @@ window.scanShare = async function(id) {
     state.textContent = `${result.total} media files · ${result.stable} stable · ${result.waitingStable} waiting`;
   } catch (error) {
     state.textContent = `Scan failed · ${error.message}`;
+  }
+};
+
+window.metadataPreview = async function(id) {
+  const state = $(`state-${id}`);
+  state.textContent = 'Reading metadata…';
+  try {
+    const result = await request(`/api/v1/shares/${id}/metadata-preview?limit=5`);
+    if (!result.items.length) {
+      state.textContent = 'No stable media yet. Scan again after the stability interval.';
+      return;
+    }
+
+    const first = result.items[0];
+    const captured = first.metadata.capturedAt || 'no capture time';
+    const camera = [first.metadata.cameraMake, first.metadata.cameraModel].filter(Boolean).join(' ');
+    const error = first.metadata.error ? ` · ${first.metadata.error}` : '';
+    state.textContent = `${result.total} metadata samples · ${captured}${camera ? ` · ${camera}` : ''}${error}`;
+  } catch (error) {
+    state.textContent = `Metadata failed · ${error.message}`;
   }
 };
 
