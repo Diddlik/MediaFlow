@@ -257,8 +257,25 @@ public sealed class SafeTransferService(
         {
             committed = Transition(committed, MediaOperationState.SourceFinalizePending);
             await operations.UpsertAsync(committed, cancellationToken);
-            fileSystem.DeleteFile(operation.SourcePath);
-            sourceDeleted = true;
+            try
+            {
+                fileSystem.DeleteFile(operation.SourcePath);
+                sourceDeleted = true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                var pending = Transition(
+                    committed,
+                    MediaOperationState.SourceFinalizePending,
+                    retryCount: committed.RetryCount + 1,
+                    lastError: ex.Message);
+                await operations.UpsertAsync(pending, CancellationToken.None);
+                return new TransferExecutionResult(
+                    pending,
+                    false,
+                    false,
+                    "Destination is committed and verified; source deletion is pending recovery.");
+            }
         }
 
         var completed = Transition(committed, MediaOperationState.Completed, completedAt: clock.UtcNow);
