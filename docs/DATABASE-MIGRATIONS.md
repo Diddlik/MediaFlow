@@ -1,0 +1,88 @@
+# Database migrations
+
+MediaFlow uses versioned, forward-only SQLite migrations.
+
+## Schema history
+
+The database contains:
+
+```sql
+schema_migrations (
+    version INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    applied_at_utc TEXT NOT NULL
+)
+```
+
+`SqliteDatabaseInitializer.CurrentSchemaVersion` is the highest schema version supported by the running application.
+
+On startup MediaFlow:
+
+1. opens the database;
+2. enables WAL mode;
+3. ensures `schema_migrations` exists;
+4. reads applied versions;
+5. refuses startup if the database contains a version newer than the application supports;
+6. applies missing migrations in ascending order;
+7. executes each migration and its history record in one SQLite transaction.
+
+This makes migration application idempotent and prevents a partially applied migration from being recorded as successful.
+
+## Existing installations before schema history
+
+The first migration is the baseline schema and uses idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements.
+
+For an existing MediaFlow database created before `schema_migrations` existed, startup therefore:
+
+- leaves existing tables and rows intact;
+- creates any missing baseline objects;
+- records migration version `1` after the baseline transaction succeeds.
+
+Automated tests cover preservation of existing Share data during this baseline process.
+
+## Adding a migration
+
+Never edit the SQL of an already released migration to change the meaning of its version. Add a new migration instead.
+
+For example:
+
+```csharp
+new SqliteMigration(
+    2,
+    "add-operation-audit-column",
+    """
+    ALTER TABLE operations ADD COLUMN audit_id TEXT NULL;
+    """)
+```
+
+Then:
+
+1. append the migration in ascending version order;
+2. increment `CurrentSchemaVersion`;
+3. add tests for both a fresh database and upgrade from the previous schema;
+4. verify existing data is preserved;
+5. document any operational impact in `CHANGELOG.md`;
+6. back up `/app/data` before deploying the release.
+
+## Downgrades
+
+Automatic down-migrations are intentionally not supported.
+
+If a database reports a schema version newer than the running application understands, MediaFlow refuses to start rather than allowing an older binary to mutate newer persistent state.
+
+To roll back across an incompatible schema change, restore the `/app/data` backup created before the upgrade and deploy the corresponding older container image.
+
+See [Backup and restore](BACKUP-RESTORE.md).
+
+## Connection-level SQLite safety
+
+Every MediaFlow SQLite connection enables:
+
+```sql
+PRAGMA foreign_keys=ON;
+PRAGMA busy_timeout=5000;
+```
+
+Foreign-key enforcement is connection-scoped in SQLite, so setting it only during startup initialization is insufficient. The connection factory applies these settings to every opened connection.
+
+WAL mode is enabled by the database initializer.
