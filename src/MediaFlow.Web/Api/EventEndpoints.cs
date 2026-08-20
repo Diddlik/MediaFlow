@@ -63,7 +63,7 @@ public static class EventEndpoints
                 return Results.Conflict(new { error = "Only planned events can be started. Closed events keep their historical capture window." });
             }
 
-            var started = Copy(existing, startAt: clock.UtcNow, endAt: null, status: MediaEventStatus.Active);
+            var started = Copy(existing, clock.UtcNow, null, MediaEventStatus.Active);
             await repository.UpsertAsync(started, ct);
             return Results.Ok(started);
         });
@@ -81,7 +81,7 @@ public static class EventEndpoints
                 return Results.Conflict(new { error = "Only active events can be stopped." });
             }
 
-            var stopped = Copy(existing, startAt: existing.StartAt, endAt: clock.UtcNow, status: MediaEventStatus.Closed);
+            var stopped = Copy(existing, existing.StartAt, clock.UtcNow, MediaEventStatus.Closed);
             await repository.UpsertAsync(stopped, ct);
             return Results.Ok(stopped);
         });
@@ -99,27 +99,28 @@ public static class EventEndpoints
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-        {
             return Results.BadRequest(new { error = "Name is required." });
-        }
-        if (request.EndAt is not null && request.EndAt < request.StartAt)
-        {
-            return Results.BadRequest(new { error = "EndAt must not be before StartAt." });
-        }
-        if (string.IsNullOrWhiteSpace(request.DestinationFolderTemplate) || Path.IsPathRooted(request.DestinationFolderTemplate))
-        {
-            return Results.BadRequest(new { error = "DestinationFolderTemplate must be a relative folder template." });
-        }
 
-        if (await sourceGroups.GetAsync(request.SourceGroupId, cancellationToken) is null)
-        {
+        if (request.EndAt is not null && request.EndAt.Value < request.StartAt)
+            return Results.BadRequest(new { error = "EndAt must not be before StartAt." });
+
+        if (string.IsNullOrWhiteSpace(request.DestinationFolderTemplate) || Path.IsPathRooted(request.DestinationFolderTemplate))
+            return Results.BadRequest(new { error = "DestinationFolderTemplate must be a relative folder template." });
+
+        var sourceGroup = await sourceGroups.GetAsync(request.SourceGroupId, cancellationToken);
+        if (sourceGroup is null)
             return Results.BadRequest(new { error = "Source group does not exist." });
-        }
 
         var destination = await shares.GetAsync(request.DestinationShareId, cancellationToken);
         if (destination is null || !destination.Enabled || destination.Role == ShareRole.Source)
-        {
             return Results.BadRequest(new { error = "Destination share must exist, be enabled, and support destination writes." });
+
+        if (sourceGroup.ShareIds.Contains(request.DestinationShareId))
+        {
+            return Results.BadRequest(new
+            {
+                error = "Destination share cannot also be a source of the same event. This prevents routing/sync loops."
+            });
         }
 
         return null;
