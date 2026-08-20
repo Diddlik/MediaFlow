@@ -11,7 +11,7 @@ async function request(url, options = {}) {
     let message = `${response.status} ${response.statusText}`;
     try {
       const body = await response.json();
-      message = body.error || body.title || message;
+      message = body.error || body.title || body.detail || message;
     } catch {}
     throw new Error(message);
   }
@@ -62,14 +62,41 @@ function renderShares() {
           ${share.owner ? `Owner: ${escapeHtml(share.owner)} · ` : ''}
           Stability: ${share.stabilitySeconds}s · ${share.recursive ? 'recursive' : 'top-level'}
         </div>
+        <div id="state-${share.id}" class="meta"></div>
       </div>
       <div class="card-actions">
+        <button type="button" onclick="probeShare('${share.id}')">Test</button>
+        ${share.role !== 'Destination' ? `<button type="button" onclick="scanShare('${share.id}')">Scan</button>` : ''}
         <button type="button" onclick="editShare('${share.id}')">Edit</button>
         <button type="button" class="danger" onclick="deleteShare('${share.id}')">Delete</button>
       </div>
     </article>
   `).join('');
 }
+
+window.probeShare = async function(id) {
+  const state = $(`state-${id}`);
+  state.textContent = 'Testing path…';
+  try {
+    const result = await request(`/api/v1/shares/${id}/probe`);
+    state.textContent = result.exists && result.readable
+      ? 'Path OK · readable'
+      : `Path problem · ${result.error || (result.exists ? 'not readable' : 'not found')}`;
+  } catch (error) {
+    state.textContent = `Test failed · ${error.message}`;
+  }
+};
+
+window.scanShare = async function(id) {
+  const state = $(`state-${id}`);
+  state.textContent = 'Scanning…';
+  try {
+    const result = await request(`/api/v1/shares/${id}/scan?limit=500`);
+    state.textContent = `${result.total} media files · ${result.stable} stable · ${result.waitingStable} waiting`;
+  } catch (error) {
+    state.textContent = `Scan failed · ${error.message}`;
+  }
+};
 
 function applyPreset() {
   const preset = presets.find(p => p.id === $('preset').value);
