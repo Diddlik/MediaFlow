@@ -51,7 +51,7 @@ public sealed class SqliteSourceGroupRepository(SqliteConnectionFactory connecti
     {
         var now = DateTimeOffset.UtcNow.ToString("O");
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await using var transaction = connection.BeginTransaction();
 
         await using (var command = connection.CreateCommand())
         {
