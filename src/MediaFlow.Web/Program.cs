@@ -14,6 +14,9 @@ builder.Services.AddSingleton<IFileSystemGateway, LocalFileSystemGateway>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "/app/data/mediaflow.db";
+var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
+    ?? ["/sources", "/destinations"];
+
 builder.Services.AddSingleton(new SqliteConnectionFactory(databasePath));
 builder.Services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
 builder.Services.AddSingleton<IShareRepository, SqliteShareRepository>();
@@ -36,7 +39,8 @@ app.MapGet("/api/v1/info", (IClock clock) => Results.Ok(new
     name = "MediaFlow",
     status = "bootstrap",
     utcNow = clock.UtcNow,
-    dryRun = builder.Configuration.GetValue("MediaFlow:DryRun", true)
+    dryRun = builder.Configuration.GetValue("MediaFlow:DryRun", true),
+    allowedRoots
 }));
 
 app.MapGet("/api/v1/share-presets", () => Results.Ok(SharePresets.All));
@@ -50,9 +54,49 @@ app.MapGet("/api/v1/shares/{id:guid}", async (Guid id, IShareRepository reposito
     return share is null ? Results.NotFound() : Results.Ok(share);
 });
 
+app.MapGet("/api/v1/shares/{id:guid}/probe", async (
+    Guid id,
+    IShareRepository repository,
+    IFileSystemGateway fileSystem,
+    CancellationToken ct) =>
+{
+    var share = await repository.GetAsync(id, ct);
+    if (share is null)
+    {
+        return Results.NotFound();
+    }
+
+    var exists = fileSystem.DirectoryExists(share.Path);
+    var readable = false;
+    string? error = null;
+
+    if (exists)
+    {
+        try
+        {
+            _ = fileSystem.EnumerateFiles(share.Path, false).Take(1).ToArray();
+            readable = true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            error = ex.Message;
+        }
+    }
+
+    return Results.Ok(new
+    {
+        share.Id,
+        share.Path,
+        exists,
+        readable,
+        pathAllowed = IsPathAllowed(share.Path, allowedRoots),
+        error
+    });
+});
+
 app.MapPost("/api/v1/shares", async (ShareRequest request, IShareRepository repository, CancellationToken ct) =>
 {
-    var validation = Validate(request);
+    var validation = Validate(request, allowedRoots);
     if (validation is not null)
     {
         return validation;
@@ -77,7 +121,7 @@ app.MapPut("/api/v1/shares/{id:guid}", async (Guid id, ShareRequest request, ISh
         return Results.NotFound();
     }
 
-    var validation = Validate(request);
+    var validation = Validate(request, allowedRoots);
     if (validation is not null)
     {
         return validation;
@@ -100,7 +144,7 @@ app.MapDelete("/api/v1/shares/{id:guid}", async (Guid id, IShareRepository repos
 
 app.Run();
 
-static IResult? Validate(ShareRequest request)
+static IResult? Validate(ShareRequest request, IReadOnlyCollection<string> allowedRoots)
 {
     if (string.IsNullOrWhiteSpace(request.Name))
     {
@@ -110,6 +154,15 @@ static IResult? Validate(ShareRequest request)
     if (string.IsNullOrWhiteSpace(request.Path) || !Path.IsPathRooted(request.Path))
     {
         return Results.BadRequest(new { error = "Path must be an absolute path visible inside the container." });
+    }
+
+    if (!IsPathAllowed(request.Path, allowedRoots))
+    {
+        return Results.BadRequest(new
+        {
+            error = "Path is outside the configured MediaFlow:AllowedRoots.",
+            allowedRoots
+        });
     }
 
     if (request.StabilitySeconds is < 1 or > 3600)
@@ -125,11 +178,34 @@ static IResult? Validate(ShareRequest request)
     return null;
 }
 
+static bool IsPathAllowed(string candidate, IEnumerable<string> roots)
+{
+    var fullCandidate = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    foreach (var root in roots)
+    {
+        var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(fullCandidate, fullRoot, comparison))
+        {
+            return true;
+        }
+
+        var prefix = fullRoot + Path.DirectorySeparatorChar;
+        if (fullCandidate.StartsWith(prefix, comparison))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static Share ToShare(Guid id, ShareRequest request) => new()
 {
     Id = id,
     Name = request.Name.Trim(),
-    Path = request.Path.Trim(),
+    Path = Path.GetFullPath(request.Path.Trim()),
     Role = request.Role,
     Enabled = request.Enabled,
     Owner = string.IsNullOrWhiteSpace(request.Owner) ? null : request.Owner.Trim(),
@@ -139,7 +215,7 @@ static Share ToShare(Guid id, ShareRequest request) => new()
     Recursive = request.Recursive,
     DefaultTimeZone = string.IsNullOrWhiteSpace(request.DefaultTimeZone) ? null : request.DefaultTimeZone.Trim(),
     IgnorePatterns = request.IgnorePatterns?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim()).Distinct().ToArray() ?? Array.Empty<string>(),
-    AllowedMediaTypes = request.AllowedMediaTypes.ToHashSet()
+    AllowedMediaTypes = request.AllowedMediaTypes!.ToHashSet()
 };
 
 public sealed record ShareRequest(
