@@ -4,6 +4,8 @@ namespace MediaFlow.Infrastructure;
 
 public sealed class LocalFileSystemGateway : IFileSystemGateway
 {
+    public const long MinimumFreeSpaceReserveBytes = 512L * 1024L * 1024L;
+
     public bool FileExists(string path) => File.Exists(path);
 
     public bool DirectoryExists(string path) => Directory.Exists(path);
@@ -63,6 +65,22 @@ public sealed class LocalFileSystemGateway : IFileSystemGateway
         if (!string.IsNullOrWhiteSpace(destinationDirectory))
         {
             Directory.CreateDirectory(destinationDirectory);
+        }
+
+        var sourceLength = new FileInfo(sourcePath).Length;
+        var available = GetAvailableFreeSpace(destinationDirectory ?? destinationPath);
+        if (available is long availableBytes)
+        {
+            var required = sourceLength > long.MaxValue - MinimumFreeSpaceReserveBytes
+                ? long.MaxValue
+                : sourceLength + MinimumFreeSpaceReserveBytes;
+            if (availableBytes < required)
+            {
+                throw new IOException(
+                    $"Insufficient destination free space. Required at least {required} bytes " +
+                    $"({sourceLength} byte file + {MinimumFreeSpaceReserveBytes} byte reserve), " +
+                    $"but only {availableBytes} bytes are available.");
+            }
         }
 
         await using var source = new FileStream(
