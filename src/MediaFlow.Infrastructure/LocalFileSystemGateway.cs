@@ -18,6 +18,34 @@ public sealed class LocalFileSystemGateway : IFileSystemGateway
 
     public DateTimeOffset GetLastWriteTimeUtc(string path) => File.GetLastWriteTimeUtc(path);
 
+    public long? GetAvailableFreeSpace(string path)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            var matchingDrive = DriveInfo.GetDrives()
+                .Where(drive => drive.IsReady)
+                .Select(drive => new
+                {
+                    Drive = drive,
+                    Root = Path.GetFullPath(drive.RootDirectory.FullName)
+                })
+                .Where(item => IsWithinRoot(fullPath, item.Root, comparison))
+                .OrderByDescending(item => item.Root.Length)
+                .FirstOrDefault();
+
+            return matchingDrive?.Drive.AvailableFreeSpace;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+    }
+
     public Stream OpenRead(string path) => new FileStream(
         path,
         FileMode.Open,
@@ -71,4 +99,19 @@ public sealed class LocalFileSystemGateway : IFileSystemGateway
     public void DeleteFile(string path) => File.Delete(path);
 
     public void EnsureDirectory(string path) => Directory.CreateDirectory(path);
+
+    private static bool IsWithinRoot(string path, string root, StringComparison comparison)
+    {
+        var normalizedRoot = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (normalizedRoot.Length == 0)
+        {
+            normalizedRoot = Path.DirectorySeparatorChar.ToString();
+        }
+
+        if (string.Equals(path, normalizedRoot, comparison)) return true;
+        var prefix = normalizedRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? normalizedRoot
+            : normalizedRoot + Path.DirectorySeparatorChar;
+        return path.StartsWith(prefix, comparison);
+    }
 }
