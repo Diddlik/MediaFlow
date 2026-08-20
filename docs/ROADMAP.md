@@ -76,6 +76,8 @@
 - [x] automated dependency update configuration
 - [x] changelog
 - [x] semantic versioning and release process
+- [x] transactional SQLite schema migration framework
+- [x] downgrade guard for newer database schemas
 - [ ] configurable destination free-space reserve
 - [ ] structured audit export
 - [ ] dedicated metrics endpoint / Prometheus
@@ -84,7 +86,7 @@
 
 - [x] critical source-deletion invariant covered by automated tests
 - [x] restart recovery behavior implemented
-- [ ] database migration/versioning strategy finalized
+- [x] database migration/versioning strategy finalized
 - [ ] quarantine workflow finalized
 - [ ] OpenAPI finalized
 - [ ] first tagged stable release
