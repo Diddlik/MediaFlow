@@ -16,16 +16,14 @@ public static class TransferEndpoints
         app.MapPost("/api/v1/transfers", async (
             TransferRequest request,
             IConfiguration configuration,
-            SafeTransferService transfer,
+            TransferCoordinator transfer,
             CancellationToken ct) =>
         {
-            if (IsDryRun(configuration))
-                return DryRunConflict();
+            if (IsDryRun(configuration)) return DryRunConflict();
 
             try
             {
-                var result = await transfer.ExecuteAsync(request.MediaFileId, request.EventId, ct);
-                return Results.Ok(result);
+                return Results.Ok(await transfer.ExecuteOnceAsync(request.MediaFileId, request.EventId, ct));
             }
             catch (FileNotFoundException ex)
             {
@@ -48,18 +46,11 @@ public static class TransferEndpoints
             IClock clock,
             CancellationToken ct) =>
         {
-            if (IsDryRun(configuration))
-                return DryRunConflict();
+            if (IsDryRun(configuration)) return DryRunConflict();
 
             try
             {
-                var retry = new OperationRetryService(
-                    operations,
-                    events,
-                    shares,
-                    fileSystem,
-                    transfer,
-                    clock);
+                var retry = new OperationRetryService(operations, events, shares, fileSystem, transfer, clock);
                 return Results.Ok(await retry.RetryAsync(id, ct));
             }
             catch (FileNotFoundException ex)
