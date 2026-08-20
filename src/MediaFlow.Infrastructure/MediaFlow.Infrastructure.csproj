@@ -3,4 +3,7 @@
     <ProjectReference Include="..\MediaFlow.Core\MediaFlow.Core.csproj" />
     <ProjectReference Include="..\MediaFlow.Application\MediaFlow.Application.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
+  </ItemGroup>
 </Project>
