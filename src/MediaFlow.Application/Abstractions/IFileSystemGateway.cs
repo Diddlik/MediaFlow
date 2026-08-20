@@ -3,6 +3,8 @@ namespace MediaFlow.Application.Abstractions;
 public interface IFileSystemGateway
 {
     bool FileExists(string path);
+    bool DirectoryExists(string path);
+    IEnumerable<string> EnumerateFiles(string path, bool recursive);
     long GetFileLength(string path);
     DateTimeOffset GetLastWriteTimeUtc(string path);
     Stream OpenRead(string path);
