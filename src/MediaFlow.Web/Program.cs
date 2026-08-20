@@ -18,7 +18,10 @@ builder.Services.AddSingleton<IHashService, Sha256HashService>();
 builder.Services.AddSingleton<ShareDiscoveryService>();
 builder.Services.AddSingleton<IMediaMetadataExtractor, ExifToolMetadataExtractor>();
 builder.Services.AddSingleton<MetadataPreviewService>();
+builder.Services.AddSingleton<DestinationPathResolver>();
 builder.Services.AddSingleton<RoutingPreviewService>();
+builder.Services.AddSingleton<SafeTransferService>();
+builder.Services.AddSingleton<OperationRecoveryService>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -30,10 +33,21 @@ builder.Services.AddSingleton<IShareRepository, SqliteShareRepository>();
 builder.Services.AddSingleton<ISourceGroupRepository, SqliteSourceGroupRepository>();
 builder.Services.AddSingleton<IMediaEventRepository, SqliteMediaEventRepository>();
 builder.Services.AddSingleton<IMediaFileRepository, SqliteMediaFileRepository>();
+builder.Services.AddSingleton<IMediaOperationRepository, SqliteMediaOperationRepository>();
 
 var app = builder.Build();
 
 await app.Services.GetRequiredService<IDatabaseInitializer>().InitializeAsync();
+var recoveryReport = await app.Services.GetRequiredService<OperationRecoveryService>().RecoverAsync();
+if (recoveryReport.Total > 0)
+{
+    app.Logger.LogInformation(
+        "MediaFlow recovery processed {Total} operations: {Completed} completed, {Quarantined} quarantined, {RetryPending} retry pending",
+        recoveryReport.Total,
+        recoveryReport.Completed,
+        recoveryReport.Quarantined,
+        recoveryReport.RetryPending);
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -229,6 +243,7 @@ app.MapDelete("/api/v1/shares/{id:guid}", async (Guid id, IShareRepository repos
 app.MapSourceGroupEndpoints();
 app.MapEventEndpoints();
 app.MapRoutingEndpoints();
+app.MapTransferEndpoints();
 
 app.Run();
 
