@@ -15,10 +15,7 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         command.CommandText = $"SELECT {SelectColumns} FROM operations ORDER BY updated_at_utc DESC LIMIT $limit";
         command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 5000));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            result.Add(Read(reader));
-        }
+        while (await reader.ReadAsync(cancellationToken)) result.Add(Read(reader));
         return result;
     }
 
@@ -28,8 +25,7 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT {SelectColumns}
-            FROM operations
+            SELECT {SelectColumns} FROM operations
             WHERE state NOT IN ($completed, $ignored, $failed, $quarantined)
             ORDER BY updated_at_utc;
             """;
@@ -38,10 +34,7 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         command.Parameters.AddWithValue("$failed", (int)MediaOperationState.Failed);
         command.Parameters.AddWithValue("$quarantined", (int)MediaOperationState.Quarantined);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            result.Add(Read(reader));
-        }
+        while (await reader.ReadAsync(cancellationToken)) result.Add(Read(reader));
         return result;
     }
 
@@ -60,12 +53,10 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT {SelectColumns}
-            FROM operations
+            SELECT {SelectColumns} FROM operations
             WHERE media_file_id = $mediaFileId
               AND state NOT IN ($completed, $ignored, $failed)
-            ORDER BY updated_at_utc DESC
-            LIMIT 1;
+            ORDER BY updated_at_utc DESC LIMIT 1;
             """;
         command.Parameters.AddWithValue("$mediaFileId", mediaFileId.ToString("D"));
         command.Parameters.AddWithValue("$completed", (int)MediaOperationState.Completed);
@@ -73,6 +64,24 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         command.Parameters.AddWithValue("$failed", (int)MediaOperationState.Failed);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? Read(reader) : null;
+    }
+
+    public async Task<bool> HasTerminalOperationAsync(Guid mediaFileId, Guid eventId, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT 1 FROM operations
+            WHERE media_file_id = $mediaFileId
+              AND event_id = $eventId
+              AND state IN ($completed, $ignored)
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$mediaFileId", mediaFileId.ToString("D"));
+        command.Parameters.AddWithValue("$eventId", eventId.ToString("D"));
+        command.Parameters.AddWithValue("$completed", (int)MediaOperationState.Completed);
+        command.Parameters.AddWithValue("$ignored", (int)MediaOperationState.Ignored);
+        return await command.ExecuteScalarAsync(cancellationToken) is not null;
     }
 
     public async Task UpsertAsync(MediaOperation operation, CancellationToken cancellationToken = default)
