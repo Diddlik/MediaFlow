@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2" />
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MediaFlow.Core\MediaFlow.Core.csproj" />
+    <ProjectReference Include="..\..\src\MediaFlow.Application\MediaFlow.Application.csproj" />
+    <ProjectReference Include="..\..\src\MediaFlow.Infrastructure\MediaFlow.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
