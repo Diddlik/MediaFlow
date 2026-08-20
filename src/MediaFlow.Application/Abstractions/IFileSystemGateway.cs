@@ -7,7 +7,7 @@ public interface IFileSystemGateway
     IEnumerable<string> EnumerateFiles(string path, bool recursive);
     long GetFileLength(string path);
     DateTimeOffset GetLastWriteTimeUtc(string path);
-    long? GetAvailableFreeSpace(string path);
+    long? GetAvailableFreeSpace(string path) => null;
     Stream OpenRead(string path);
     Task CopyFileAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken = default);
     void MoveFile(string sourcePath, string destinationPath);
