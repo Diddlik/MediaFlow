@@ -20,8 +20,6 @@ public sealed class OperationRetryService(
 
         if (operation.State != MediaOperationState.RetryPending)
             throw new InvalidOperationException("Only RetryPending operations can be retried automatically.");
-        if ((int)operation.State >= (int)MediaOperationState.DestinationCommitted)
-            throw new InvalidOperationException("Committed operations must be handled by recovery, not retry.");
         if (operation.EventId is null)
             throw new InvalidOperationException("Operation has no event and cannot be retried.");
 
