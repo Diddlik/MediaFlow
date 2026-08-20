@@ -4,4 +4,7 @@
     <ProjectReference Include="..\MediaFlow.Application\MediaFlow.Application.csproj" />
     <ProjectReference Include="..\MediaFlow.Infrastructure\MediaFlow.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MQTTnet" Version="5.2.0.1603" />
+  </ItemGroup>
 </Project>
