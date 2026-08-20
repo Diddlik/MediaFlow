@@ -5,6 +5,7 @@ using MediaFlow.Core.Domain;
 using MediaFlow.Infrastructure;
 using MediaFlow.Infrastructure.Metadata;
 using MediaFlow.Infrastructure.Persistence;
+using MediaFlow.Web.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,7 @@ builder.Services.AddSingleton<IHashService, Sha256HashService>();
 builder.Services.AddSingleton<ShareDiscoveryService>();
 builder.Services.AddSingleton<IMediaMetadataExtractor, ExifToolMetadataExtractor>();
 builder.Services.AddSingleton<MetadataPreviewService>();
+builder.Services.AddSingleton<RoutingPreviewService>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -25,6 +27,9 @@ var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Ge
 builder.Services.AddSingleton(new SqliteConnectionFactory(databasePath));
 builder.Services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
 builder.Services.AddSingleton<IShareRepository, SqliteShareRepository>();
+builder.Services.AddSingleton<ISourceGroupRepository, SqliteSourceGroupRepository>();
+builder.Services.AddSingleton<IMediaEventRepository, SqliteMediaEventRepository>();
+builder.Services.AddSingleton<IMediaFileRepository, SqliteMediaFileRepository>();
 
 var app = builder.Build();
 
@@ -220,6 +225,10 @@ app.MapPut("/api/v1/shares/{id:guid}", async (Guid id, ShareRequest request, ISh
 
 app.MapDelete("/api/v1/shares/{id:guid}", async (Guid id, IShareRepository repository, CancellationToken ct) =>
     await repository.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+
+app.MapSourceGroupEndpoints();
+app.MapEventEndpoints();
+app.MapRoutingEndpoints();
 
 app.Run();
 
