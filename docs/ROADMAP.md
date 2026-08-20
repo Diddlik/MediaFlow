@@ -74,6 +74,8 @@
 - [x] public security guidance
 - [x] contributor guide
 - [x] automated dependency update configuration
+- [x] changelog
+- [x] semantic versioning and release process
 - [ ] configurable destination free-space reserve
 - [ ] structured audit export
 - [ ] dedicated metrics endpoint / Prometheus
@@ -85,7 +87,6 @@
 - [ ] database migration/versioning strategy finalized
 - [ ] quarantine workflow finalized
 - [ ] OpenAPI finalized
-- [ ] release notes / semantic versioning policy
 - [ ] first tagged stable release
 
 ## Later
