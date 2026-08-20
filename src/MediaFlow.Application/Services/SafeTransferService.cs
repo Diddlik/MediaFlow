@@ -38,30 +38,24 @@ public sealed class SafeTransferService(
             return new TransferExecutionResult(
                 incomplete,
                 false,
-                incomplete.State >= MediaOperationState.DestinationCommitted,
+                (int)incomplete.State >= (int)MediaOperationState.DestinationCommitted,
                 "An incomplete operation already exists for this media file. Recovery must resolve it first.");
         }
 
         if (!fileSystem.FileExists(mediaFile.SourcePath))
-        {
             throw new FileNotFoundException("Source file no longer exists.", mediaFile.SourcePath);
-        }
 
         var currentSize = fileSystem.GetFileLength(mediaFile.SourcePath);
         if (currentSize != mediaFile.Size)
-        {
             throw new IOException("Source file size changed after discovery; refusing to transfer it.");
-        }
 
         if (mediaEvent.OperationMode == OperationMode.Archive)
-        {
             throw new NotSupportedException("Archive retention is not implemented yet. Use Copy or SafeMove.");
-        }
 
         var operationId = Guid.NewGuid();
         var desiredDestination = destinationPaths.Resolve(mediaEvent, sourceShare, destinationShare, mediaFile);
         var stagingDirectory = Path.Combine(destinationShare.Path, ".mediaflow-staging");
-        DestinationPathResolver.EnsureInsideRoot(destinationShare.Path, stagingDirectory + Path.DirectorySeparatorChar + "x");
+        DestinationPathResolver.EnsureInsideRoot(destinationShare.Path, Path.Combine(stagingDirectory, "probe"));
         fileSystem.EnsureDirectory(stagingDirectory);
         var stagingPath = Path.Combine(stagingDirectory, operationId.ToString("N") + mediaFile.Extension + ".part");
 
@@ -92,43 +86,13 @@ public sealed class SafeTransferService(
 
             if (conflict.ExistingIdentical)
             {
-                if (mediaEvent.DuplicateStrategy == DuplicateStrategy.SafeMoveToExisting)
-                {
-                    operation = Transition(
-                        operation,
-                        MediaOperationState.DestinationCommitted,
-                        destinationPath: conflict.Path,
-                        sourceHash: sourceHash,
-                        destinationHash: sourceHash);
-                    await operations.UpsertAsync(operation, cancellationToken);
-
-                    var sourceDeleted = false;
-                    if (mediaEvent.OperationMode == OperationMode.SafeMove)
-                    {
-                        operation = Transition(operation, MediaOperationState.SourceFinalizePending);
-                        await operations.UpsertAsync(operation, cancellationToken);
-                        fileSystem.DeleteFile(mediaFile.SourcePath);
-                        sourceDeleted = true;
-                    }
-
-                    operation = Transition(operation, MediaOperationState.Completed, completedAt: clock.UtcNow);
-                    await operations.UpsertAsync(operation, cancellationToken);
-                    return new TransferExecutionResult(operation, sourceDeleted, false, "Identical destination already existed and was verified by SHA-256.");
-                }
-
-                if (mediaEvent.DuplicateStrategy != DuplicateStrategy.KeepBoth)
-                {
-                    operation = Transition(
-                        operation,
-                        MediaOperationState.Ignored,
-                        destinationPath: conflict.Path,
-                        sourceHash: sourceHash,
-                        destinationHash: sourceHash,
-                        lastError: "Identical destination already exists; source preserved by duplicate policy.",
-                        completedAt: clock.UtcNow);
-                    await operations.UpsertAsync(operation, cancellationToken);
-                    return new TransferExecutionResult(operation, false, false, "Identical destination exists; source preserved.");
-                }
+                var handled = await HandleIdenticalDestinationAsync(
+                    operation,
+                    conflict.Path,
+                    sourceHash,
+                    mediaEvent,
+                    cancellationToken);
+                if (handled is not null) return handled;
             }
 
             var finalDestination = conflict.Path;
@@ -176,6 +140,13 @@ public sealed class SafeTransferService(
             if (commitConflict.ExistingIdentical)
             {
                 fileSystem.DeleteFile(stagingPath);
+                var handled = await HandleIdenticalDestinationAsync(
+                    operation,
+                    commitConflict.Path,
+                    sourceHash,
+                    mediaEvent,
+                    cancellationToken);
+                if (handled is not null) return handled;
                 finalDestination = commitConflict.Path;
             }
             else
@@ -229,11 +200,17 @@ public sealed class SafeTransferService(
         {
             throw;
         }
+        catch (DestinationConflictException ex)
+        {
+            operation = Transition(operation, MediaOperationState.Quarantined, lastError: ex.Message);
+            await operations.UpsertAsync(operation, CancellationToken.None);
+            return new TransferExecutionResult(operation, false, false, ex.Message);
+        }
         catch (Exception ex)
         {
             operation = Transition(
                 operation,
-                operation.State >= MediaOperationState.DestinationCommitted
+                (int)operation.State >= (int)MediaOperationState.DestinationCommitted
                     ? MediaOperationState.SourceFinalizePending
                     : MediaOperationState.RetryPending,
                 retryCount: operation.RetryCount + 1,
@@ -241,6 +218,52 @@ public sealed class SafeTransferService(
             await operations.UpsertAsync(operation, CancellationToken.None);
             throw;
         }
+    }
+
+    private async Task<TransferExecutionResult?> HandleIdenticalDestinationAsync(
+        MediaOperation operation,
+        string existingPath,
+        string sourceHash,
+        MediaEvent mediaEvent,
+        CancellationToken cancellationToken)
+    {
+        if (mediaEvent.DuplicateStrategy == DuplicateStrategy.KeepBoth)
+            return null;
+
+        if (mediaEvent.DuplicateStrategy != DuplicateStrategy.SafeMoveToExisting)
+        {
+            var ignored = Transition(
+                operation,
+                MediaOperationState.Ignored,
+                destinationPath: existingPath,
+                sourceHash: sourceHash,
+                destinationHash: sourceHash,
+                lastError: "Identical destination already exists; source preserved by duplicate policy.",
+                completedAt: clock.UtcNow);
+            await operations.UpsertAsync(ignored, cancellationToken);
+            return new TransferExecutionResult(ignored, false, false, "Identical destination exists; source preserved.");
+        }
+
+        var committed = Transition(
+            operation,
+            MediaOperationState.DestinationCommitted,
+            destinationPath: existingPath,
+            sourceHash: sourceHash,
+            destinationHash: sourceHash);
+        await operations.UpsertAsync(committed, cancellationToken);
+
+        var sourceDeleted = false;
+        if (mediaEvent.OperationMode == OperationMode.SafeMove)
+        {
+            committed = Transition(committed, MediaOperationState.SourceFinalizePending);
+            await operations.UpsertAsync(committed, cancellationToken);
+            fileSystem.DeleteFile(operation.SourcePath);
+            sourceDeleted = true;
+        }
+
+        var completed = Transition(committed, MediaOperationState.Completed, completedAt: clock.UtcNow);
+        await operations.UpsertAsync(completed, cancellationToken);
+        return new TransferExecutionResult(completed, sourceDeleted, false, "Identical destination already existed and was verified by SHA-256.");
     }
 
     private static void ValidateRoute(
@@ -279,14 +302,14 @@ public sealed class SafeTransferService(
         while (fileSystem.FileExists(candidate))
         {
             var existingHash = await HashPathAsync(candidate, cancellationToken);
-            if (string.Equals(existingHash, sourceHash, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(existingHash, sourceHash, StringComparison.OrdinalIgnoreCase) &&
+                mediaEvent.DuplicateStrategy != DuplicateStrategy.KeepBoth)
             {
-                if (mediaEvent.DuplicateStrategy != DuplicateStrategy.KeepBoth)
-                    return new DestinationConflict(candidate, true);
+                return new DestinationConflict(candidate, true);
             }
 
             if (mediaEvent.ConflictStrategy == ConflictStrategy.Quarantine)
-                throw new IOException($"Destination conflict at '{candidate}' and conflict strategy is Quarantine.");
+                throw new DestinationConflictException($"Destination conflict at '{candidate}' and conflict strategy is Quarantine.");
 
             var directory = Path.GetDirectoryName(requestedPath)!;
             var extension = Path.GetExtension(requestedPath);
@@ -305,8 +328,6 @@ public sealed class SafeTransferService(
                 candidate = Path.Combine(directory, $"{baseStem}_{counter:00}{extension}");
                 counter++;
             }
-
-            DestinationPathResolver.EnsureInsideRoot(directory, candidate);
         }
 
         return new DestinationConflict(candidate, false);
@@ -365,6 +386,7 @@ public sealed class SafeTransferService(
     };
 
     private sealed record DestinationConflict(string Path, bool ExistingIdentical);
+    private sealed class DestinationConflictException(string message) : IOException(message);
 }
 
 public sealed record TransferExecutionResult(
