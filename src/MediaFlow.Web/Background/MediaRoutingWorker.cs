@@ -8,6 +8,9 @@ public sealed class MediaRoutingWorker(
     IShareRepository shares,
     RoutingPreviewService routing,
     TransferCoordinator transfers,
+    IRuntimeSettingsStore runtimeSettings,
+    AutomationStatus status,
+    IClock clock,
     IConfiguration configuration,
     ILogger<MediaRoutingWorker> logger) : BackgroundService
 {
@@ -20,11 +23,20 @@ public sealed class MediaRoutingWorker(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            if (configuration.GetValue("MediaFlow:Automation:Enabled", true))
+            var settings = await runtimeSettings.GetAsync(stoppingToken);
+            if (settings.AutomationEnabled)
             {
+                status.CycleStarted(clock.UtcNow);
                 try
                 {
-                    await ProcessCycleAsync(stoppingToken);
+                    var result = await ProcessCycleAsync(settings, stoppingToken);
+                    status.CycleCompleted(
+                        clock.UtcNow,
+                        result.SourceShares,
+                        result.Matched,
+                        result.Executed,
+                        result.Skipped,
+                        result.Errors);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -32,28 +44,26 @@ public sealed class MediaRoutingWorker(
                 }
                 catch (Exception ex)
                 {
+                    status.CycleFailed(clock.UtcNow, ex.Message);
                     logger.LogError(ex, "Unhandled error in MediaFlow automation cycle");
                 }
             }
 
-            var intervalSeconds = Math.Clamp(
-                configuration.GetValue("MediaFlow:ReconciliationIntervalSeconds", 300),
-                15,
-                86400);
-            await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
+            settings = await runtimeSettings.GetAsync(stoppingToken);
+            await Task.Delay(
+                TimeSpan.FromSeconds(settings.ReconciliationIntervalSeconds),
+                stoppingToken);
         }
     }
 
-    private async Task ProcessCycleAsync(CancellationToken cancellationToken)
+    private async Task<CycleResult> ProcessCycleAsync(
+        MediaFlowRuntimeSettings settings,
+        CancellationToken cancellationToken)
     {
-        var dryRun = configuration.GetValue("MediaFlow:DryRun", true);
-        var allowFallback = configuration.GetValue(
-            "MediaFlow:Automation:AllowFilesystemTimestampFallback",
-            false);
-        var maxFiles = Math.Clamp(
-            configuration.GetValue("MediaFlow:Automation:MaxFilesPerSharePerCycle", 200),
-            1,
-            2000);
+        var matched = 0;
+        var executed = 0;
+        var skipped = 0;
+        var errors = 0;
 
         var sourceShares = (await shares.ListAsync(cancellationToken))
             .Where(x => x.Enabled && x.Role is ShareRole.Source or ShareRole.Both)
@@ -65,10 +75,14 @@ public sealed class MediaRoutingWorker(
             IReadOnlyList<RoutingPreviewItem> items;
             try
             {
-                items = await routing.PreviewAsync(sourceShare, maxFiles, cancellationToken);
+                items = await routing.PreviewAsync(
+                    sourceShare,
+                    settings.MaxFilesPerSharePerCycle,
+                    cancellationToken);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
+                errors++;
                 logger.LogWarning(ex, "Automation scan failed for share {Share}", sourceShare.Name);
                 continue;
             }
@@ -76,18 +90,21 @@ public sealed class MediaRoutingWorker(
             foreach (var item in items.Where(x => x.State == RoutingPreviewState.Matched && x.Event is not null))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                matched++;
 
-                if (!allowFallback &&
+                if (!settings.AllowFilesystemTimestampFallback &&
                     string.Equals(item.MediaFile.TimestampSource, "FileLastWriteTimeUtc", StringComparison.Ordinal))
                 {
+                    skipped++;
                     logger.LogInformation(
                         "Auto-routing skipped {File}: capture time is filesystem fallback",
                         item.MediaFile.SourcePath);
                     continue;
                 }
 
-                if (dryRun)
+                if (settings.DryRun)
                 {
+                    skipped++;
                     logger.LogInformation(
                         "Dry run: would route {Source} to {Destination} for event {Event}",
                         item.MediaFile.SourcePath,
@@ -105,17 +122,32 @@ public sealed class MediaRoutingWorker(
 
                     if (result.Executed)
                     {
+                        executed++;
                         logger.LogInformation(
                             "Auto-routing completed {Source}: {State}",
                             item.MediaFile.SourcePath,
                             result.Result?.Operation.State);
                     }
+                    else
+                    {
+                        skipped++;
+                    }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or NotSupportedException)
                 {
+                    errors++;
                     logger.LogWarning(ex, "Auto-routing failed for {File}", item.MediaFile.SourcePath);
                 }
             }
         }
+
+        return new CycleResult(sourceShares.Length, matched, executed, skipped, errors);
     }
+
+    private sealed record CycleResult(
+        int SourceShares,
+        int Matched,
+        int Executed,
+        int Skipped,
+        int Errors);
 }
