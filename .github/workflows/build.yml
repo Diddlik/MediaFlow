@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,3 +28,14 @@ jobs:
 
       - name: Build
         run: dotnet build MediaFlow.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test MediaFlow.sln --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
