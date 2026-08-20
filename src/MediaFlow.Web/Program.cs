@@ -28,6 +28,7 @@ builder.Services.AddSingleton<TransferCoordinator>();
 builder.Services.AddSingleton<OperationRecoveryService>();
 builder.Services.AddSingleton<EventControlService>();
 builder.Services.AddSingleton<AutomationStatus>();
+builder.Services.AddSingleton<AutomationWakeSignal>();
 
 var runtimeDefaults = new MediaFlowRuntimeSettings(
     builder.Configuration.GetValue("MediaFlow:DryRun", true),
@@ -38,6 +39,7 @@ var runtimeDefaults = new MediaFlowRuntimeSettings(
 var runtimeSettingsPath = builder.Configuration["MediaFlow:RuntimeSettingsPath"] ?? "data/runtime-settings.json";
 builder.Services.AddSingleton<IRuntimeSettingsStore>(
     new JsonRuntimeSettingsStore(runtimeSettingsPath, runtimeDefaults));
+builder.Services.AddHostedService<SourceShareWatcherWorker>();
 builder.Services.AddHostedService<MediaRoutingWorker>();
 builder.Services.AddHostedService<MqttIntegrationWorker>();
 
@@ -92,6 +94,7 @@ app.MapGet("/api/v1/info", async (
         settings.ReconciliationIntervalSeconds,
         settings.MaxFilesPerSharePerCycle,
         settings.AllowFilesystemTimestampFallback,
+        filesystemWatcherEnabled = true,
         mqttEnabled = builder.Configuration.GetValue("MediaFlow:Mqtt:Enabled", false),
         allowedRoots
     });
