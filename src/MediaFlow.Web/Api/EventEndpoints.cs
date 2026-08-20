@@ -1,4 +1,5 @@
 using MediaFlow.Application.Abstractions;
+using MediaFlow.Application.Services;
 using MediaFlow.Core.Domain;
 
 namespace MediaFlow.Web.Api;
@@ -52,107 +53,51 @@ public static class EventEndpoints
 
         group.MapPost("/{id:guid}/start", async (
             Guid id,
-            IMediaEventRepository repository,
-            IClock clock,
+            EventControlService control,
             CancellationToken ct) =>
-        {
-            var existing = await repository.GetAsync(id, ct);
-            if (existing is null) return Results.NotFound();
-            if (existing.Status != MediaEventStatus.Planned)
-                return Results.Conflict(new { error = "Only planned events can be started. Closed events keep their historical capture window." });
-
-            var started = Copy(existing, clock.UtcNow, null, MediaEventStatus.Active);
-            await repository.UpsertAsync(started, ct);
-            return Results.Ok(started);
-        });
+            ToResult(await control.StartAsync(id, ct)));
 
         group.MapPost("/{id:guid}/stop", async (
             Guid id,
-            IMediaEventRepository repository,
-            IClock clock,
+            EventControlService control,
             CancellationToken ct) =>
-        {
-            var existing = await repository.GetAsync(id, ct);
-            if (existing is null) return Results.NotFound();
-            if (existing.Status != MediaEventStatus.Active)
-                return Results.Conflict(new { error = "Only active events can be stopped." });
-
-            var stopped = Copy(existing, existing.StartAt, clock.UtcNow, MediaEventStatus.Closed);
-            await repository.UpsertAsync(stopped, ct);
-            return Results.Ok(stopped);
-        });
+            ToResult(await control.StopAsync(id, ct)));
 
         group.MapPost("/quick-start", async (
             QuickEventStartRequest request,
-            IMediaEventRepository repository,
-            ISourceGroupRepository sourceGroups,
-            IShareRepository shares,
-            IClock clock,
+            EventControlService control,
             CancellationToken ct) =>
-        {
-            var eventRequest = new EventRequest(
+            ToResult(await control.QuickStartAsync(new QuickStartEventCommand(
                 request.Name,
-                request.Type,
-                clock.UtcNow,
-                null,
-                MediaEventStatus.Active,
                 request.SourceGroupId,
                 request.DestinationShareId,
+                request.Type,
                 request.DestinationFolderTemplate,
                 request.OperationMode,
                 request.ConflictStrategy,
-                request.DuplicateStrategy);
-
-            var validation = await ValidateAsync(eventRequest, sourceGroups, shares, ct);
-            if (validation is not null) return validation;
-
-            var activeSameName = (await repository.ListAsync(ct))
-                .Where(x => x.Status == MediaEventStatus.Active &&
-                            string.Equals(x.Name, request.Name, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            if (activeSameName.Length == 1 &&
-                activeSameName[0].SourceGroupId == request.SourceGroupId &&
-                activeSameName[0].DestinationShareId == request.DestinationShareId)
-            {
-                return Results.Ok(activeSameName[0]);
-            }
-
-            if (activeSameName.Length > 0)
-                return Results.Conflict(new { error = "An active event with this name already exists with different or ambiguous configuration." });
-
-            var mediaEvent = ToDomain(Guid.NewGuid(), eventRequest);
-            await repository.UpsertAsync(mediaEvent, ct);
-            return Results.Created($"/api/v1/events/{mediaEvent.Id}", mediaEvent);
-        });
+                request.DuplicateStrategy), ct)));
 
         group.MapPost("/quick-stop", async (
             QuickEventStopRequest request,
-            IMediaEventRepository repository,
-            IClock clock,
+            EventControlService control,
             CancellationToken ct) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Name))
-                return Results.BadRequest(new { error = "Name is required." });
-
-            var matches = (await repository.ListAsync(ct))
-                .Where(x => x.Status == MediaEventStatus.Active &&
-                            string.Equals(x.Name, request.Name.Trim(), StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            if (matches.Length == 0) return Results.NotFound(new { error = "No active event with this name exists." });
-            if (matches.Length > 1) return Results.Conflict(new { error = "More than one active event has this name." });
-
-            var stopped = Copy(matches[0], matches[0].StartAt, clock.UtcNow, MediaEventStatus.Closed);
-            await repository.UpsertAsync(stopped, ct);
-            return Results.Ok(stopped);
-        });
+            ToResult(await control.QuickStopAsync(request.Name, ct)));
 
         group.MapDelete("/{id:guid}", async (Guid id, IMediaEventRepository repository, CancellationToken ct) =>
             await repository.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
 
         return app;
     }
+
+    private static IResult ToResult(EventControlResult result) => result.Status switch
+    {
+        EventControlStatus.Success => Results.Ok(result.Event),
+        EventControlStatus.Created => Results.Created($"/api/v1/events/{result.Event!.Id}", result.Event),
+        EventControlStatus.NotFound => Results.NotFound(new { error = result.Error }),
+        EventControlStatus.Conflict => Results.Conflict(new { error = result.Error }),
+        EventControlStatus.Invalid => Results.BadRequest(new { error = result.Error }),
+        _ => Results.Problem("Unknown event control result.")
+    };
 
     private static async Task<IResult?> ValidateAsync(
         EventRequest request,
@@ -195,22 +140,6 @@ public static class EventEndpoints
         OperationMode = request.OperationMode,
         ConflictStrategy = request.ConflictStrategy,
         DuplicateStrategy = request.DuplicateStrategy
-    };
-
-    private static MediaEvent Copy(MediaEvent source, DateTimeOffset startAt, DateTimeOffset? endAt, MediaEventStatus status) => new()
-    {
-        Id = source.Id,
-        Name = source.Name,
-        Type = source.Type,
-        StartAt = startAt,
-        EndAt = endAt,
-        Status = status,
-        SourceGroupId = source.SourceGroupId,
-        DestinationShareId = source.DestinationShareId,
-        DestinationFolderTemplate = source.DestinationFolderTemplate,
-        OperationMode = source.OperationMode,
-        ConflictStrategy = source.ConflictStrategy,
-        DuplicateStrategy = source.DuplicateStrategy
     };
 }
 
