@@ -18,20 +18,34 @@ public sealed class OperationRecoveryService(
         foreach (var operation in pending)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            if ((int)operation.State < (int)MediaOperationState.DestinationCommitted)
+            try
             {
-                var retry = Transition(
-                    operation,
-                    MediaOperationState.RetryPending,
-                    "Recovered before destination commit; source preserved and explicit retry is required.");
-                await operations.UpsertAsync(retry, cancellationToken);
-                items.Add(new RecoveryItem(operation.Id, retry.State, retry.LastError));
-                continue;
-            }
+                if (!HasCommittedDestination(operation.State))
+                {
+                    var retry = Transition(
+                        operation,
+                        MediaOperationState.RetryPending,
+                        "Recovered before destination commit; source preserved and explicit retry is required.");
+                    await operations.UpsertAsync(retry, cancellationToken);
+                    items.Add(new RecoveryItem(operation.Id, retry.State, retry.LastError));
+                    continue;
+                }
 
-            var recovered = await RecoverCommittedAsync(operation, cancellationToken);
-            items.Add(recovered);
+                items.Add(await RecoverCommittedAsync(operation, cancellationToken));
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                var safeState = HasCommittedDestination(operation.State)
+                    ? MediaOperationState.SourceFinalizePending
+                    : MediaOperationState.RetryPending;
+                var pendingState = Transition(operation, safeState, $"Recovery could not continue safely: {ex.Message}");
+                await operations.UpsertAsync(pendingState, CancellationToken.None);
+                items.Add(new RecoveryItem(operation.Id, pendingState.State, pendingState.LastError));
+            }
         }
 
         return new RecoveryReport(
@@ -111,6 +125,9 @@ public sealed class OperationRecoveryService(
         await using var stream = fileSystem.OpenRead(path);
         return await hashService.ComputeSha256Async(stream, cancellationToken);
     }
+
+    private static bool HasCommittedDestination(MediaOperationState state) =>
+        state is MediaOperationState.DestinationCommitted or MediaOperationState.SourceFinalizePending;
 
     private static MediaOperation Transition(
         MediaOperation source,
