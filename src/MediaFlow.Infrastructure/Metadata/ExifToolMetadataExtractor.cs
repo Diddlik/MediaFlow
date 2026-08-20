@@ -28,6 +28,7 @@ public sealed class ExifToolMetadataExtractor(string executable = "exiftool") : 
             foreach (var argument in new[]
             {
                 "-json",
+                "-n",
                 "-DateTimeOriginal",
                 "-OffsetTimeOriginal",
                 "-CreateDate",
@@ -85,7 +86,7 @@ public sealed class ExifToolMetadataExtractor(string executable = "exiftool") : 
         {
             throw;
         }
-        catch (Exception ex) when (ex is Win32Exception or IOException or JsonException or FormatException or TimeZoneNotFoundException)
+        catch (Exception ex) when (ex is Win32Exception or IOException or JsonException or FormatException or TimeZoneNotFoundException or InvalidTimeZoneException)
         {
             return Empty(ex.Message);
         }
@@ -129,7 +130,7 @@ public sealed class ExifToolMetadataExtractor(string executable = "exiftool") : 
                     : share.DefaultTimeZone;
                 var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
                 var offset = zone.GetUtcOffset(local);
-                return (new DateTimeOffset(local, offset), field, true);
+                return (new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), offset), field, true);
             }
         }
 
@@ -170,7 +171,7 @@ public sealed class ExifToolMetadataExtractor(string executable = "exiftool") : 
             value,
             formats,
             CultureInfo.InvariantCulture,
-            DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.SpecifyKind,
+            DateTimeStyles.AllowWhiteSpaces,
             out result);
     }
 
