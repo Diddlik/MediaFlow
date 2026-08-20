@@ -34,7 +34,8 @@ Real filesystem copies keep a **512 MiB free-space reserve in addition to the fi
 ## Implemented
 
 - .NET 10 / ASP.NET Core
-- SQLite persistence
+- SQLite persistence with transactional versioned schema migrations
+- downgrade guard when a database is newer than the running application
 - Web UI
 - source and destination Shares
 - Source Groups
@@ -158,6 +159,7 @@ CI validates the Release build, automated tests and Docker image. The runtime im
 - [Implementation specification](docs/IMPLEMENTATION.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Database migrations](docs/DATABASE-MIGRATIONS.md)
 - [Changelog](CHANGELOG.md)
 - [Release process](docs/RELEASING.md)
 - [Backup and restore](docs/BACKUP-RESTORE.md)
@@ -167,4 +169,4 @@ CI validates the Release build, automated tests and Docker image. The runtime im
 
 ## Status
 
-Active development. Core routing, source-deletion safety, recovery, watcher/reconciliation automation, storage protection, Docker deployment, REST and optional MQTT control are implemented. Remaining work before v1.0 includes formal database migration/versioning, a dedicated quarantine workflow and OpenAPI.
+Active development. Core routing, source-deletion safety, recovery, watcher/reconciliation automation, storage protection, versioned database migrations, Docker deployment, REST and optional MQTT control are implemented. Remaining work before v1.0 includes a dedicated quarantine workflow and OpenAPI.
