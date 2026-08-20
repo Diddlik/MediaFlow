@@ -6,6 +6,7 @@ using MediaFlow.Infrastructure;
 using MediaFlow.Infrastructure.Metadata;
 using MediaFlow.Infrastructure.Persistence;
 using MediaFlow.Web.Api;
+using MediaFlow.Web.Background;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,7 +22,9 @@ builder.Services.AddSingleton<MetadataPreviewService>();
 builder.Services.AddSingleton<DestinationPathResolver>();
 builder.Services.AddSingleton<RoutingPreviewService>();
 builder.Services.AddSingleton<SafeTransferService>();
+builder.Services.AddSingleton<TransferCoordinator>();
 builder.Services.AddSingleton<OperationRecoveryService>();
+builder.Services.AddHostedService<MediaRoutingWorker>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -61,9 +64,12 @@ app.MapGet("/health", () => Results.Ok(new
 app.MapGet("/api/v1/info", (IClock clock) => Results.Ok(new
 {
     name = "MediaFlow",
-    status = "bootstrap",
+    status = "automation",
     utcNow = clock.UtcNow,
     dryRun = builder.Configuration.GetValue("MediaFlow:DryRun", true),
+    automationEnabled = builder.Configuration.GetValue("MediaFlow:Automation:Enabled", true),
+    reconciliationIntervalSeconds = builder.Configuration.GetValue("MediaFlow:ReconciliationIntervalSeconds", 300),
+    allowFilesystemTimestampFallback = builder.Configuration.GetValue("MediaFlow:Automation:AllowFilesystemTimestampFallback", false),
     allowedRoots
 }));
 
@@ -85,10 +91,7 @@ app.MapGet("/api/v1/shares/{id:guid}/probe", async (
     CancellationToken ct) =>
 {
     var share = await repository.GetAsync(id, ct);
-    if (share is null)
-    {
-        return Results.NotFound();
-    }
+    if (share is null) return Results.NotFound();
 
     var exists = fileSystem.DirectoryExists(share.Path);
     var readable = false;
@@ -126,10 +129,7 @@ app.MapGet("/api/v1/shares/{id:guid}/scan", async (
     CancellationToken ct) =>
 {
     var share = await repository.GetAsync(id, ct);
-    if (share is null)
-    {
-        return Results.NotFound();
-    }
+    if (share is null) return Results.NotFound();
 
     try
     {
@@ -162,26 +162,14 @@ app.MapGet("/api/v1/shares/{id:guid}/metadata-preview", async (
     CancellationToken ct) =>
 {
     var share = await repository.GetAsync(id, ct);
-    if (share is null)
-    {
-        return Results.NotFound();
-    }
-
+    if (share is null) return Results.NotFound();
     if (share.Role == ShareRole.Destination)
-    {
         return Results.BadRequest(new { error = "Metadata preview is only available for source shares." });
-    }
 
     try
     {
         var preview = await previewService.PreviewAsync(share, Math.Clamp(limit ?? 10, 1, 50), ct);
-        return Results.Ok(new
-        {
-            share.Id,
-            share.Name,
-            total = preview.Count,
-            items = preview
-        });
+        return Results.Ok(new { share.Id, share.Name, total = preview.Count, items = preview });
     }
     catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
     {
@@ -195,10 +183,7 @@ app.MapGet("/api/v1/shares/{id:guid}/metadata-preview", async (
 app.MapPost("/api/v1/shares", async (ShareRequest request, IShareRepository repository, CancellationToken ct) =>
 {
     var validation = Validate(request, allowedRoots);
-    if (validation is not null)
-    {
-        return validation;
-    }
+    if (validation is not null) return validation;
 
     var share = ToShare(Guid.NewGuid(), request);
     try
@@ -214,16 +199,9 @@ app.MapPost("/api/v1/shares", async (ShareRequest request, IShareRepository repo
 
 app.MapPut("/api/v1/shares/{id:guid}", async (Guid id, ShareRequest request, IShareRepository repository, CancellationToken ct) =>
 {
-    if (await repository.GetAsync(id, ct) is null)
-    {
-        return Results.NotFound();
-    }
-
+    if (await repository.GetAsync(id, ct) is null) return Results.NotFound();
     var validation = Validate(request, allowedRoots);
-    if (validation is not null)
-    {
-        return validation;
-    }
+    if (validation is not null) return validation;
 
     var share = ToShare(id, request);
     try
@@ -238,7 +216,16 @@ app.MapPut("/api/v1/shares/{id:guid}", async (Guid id, ShareRequest request, ISh
 });
 
 app.MapDelete("/api/v1/shares/{id:guid}", async (Guid id, IShareRepository repository, CancellationToken ct) =>
-    await repository.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+{
+    try
+    {
+        return await repository.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound();
+    }
+    catch (Microsoft.Data.Sqlite.SqliteException ex) when (ex.SqliteErrorCode == 19)
+    {
+        return Results.Conflict(new { error = "Share is still referenced by a source group, event or indexed media file." });
+    }
+});
 
 app.MapSourceGroupEndpoints();
 app.MapEventEndpoints();
@@ -250,33 +237,19 @@ app.Run();
 static IResult? Validate(ShareRequest request, IReadOnlyCollection<string> allowedRoots)
 {
     if (string.IsNullOrWhiteSpace(request.Name))
-    {
         return Results.BadRequest(new { error = "Name is required." });
-    }
 
     if (string.IsNullOrWhiteSpace(request.Path) || !Path.IsPathRooted(request.Path))
-    {
         return Results.BadRequest(new { error = "Path must be an absolute path visible inside the container." });
-    }
 
     if (!IsPathAllowed(request.Path, allowedRoots))
-    {
-        return Results.BadRequest(new
-        {
-            error = "Path is outside the configured MediaFlow:AllowedRoots.",
-            allowedRoots
-        });
-    }
+        return Results.BadRequest(new { error = "Path is outside the configured MediaFlow:AllowedRoots.", allowedRoots });
 
     if (request.StabilitySeconds is < 1 or > 3600)
-    {
         return Results.BadRequest(new { error = "StabilitySeconds must be between 1 and 3600." });
-    }
 
     if (request.AllowedMediaTypes is null || request.AllowedMediaTypes.Length == 0)
-    {
         return Results.BadRequest(new { error = "At least one media type must be enabled." });
-    }
 
     return null;
 }
@@ -289,16 +262,8 @@ static bool IsPathAllowed(string candidate, IEnumerable<string> roots)
     foreach (var root in roots)
     {
         var fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        if (string.Equals(fullCandidate, fullRoot, comparison))
-        {
-            return true;
-        }
-
-        var prefix = fullRoot + Path.DirectorySeparatorChar;
-        if (fullCandidate.StartsWith(prefix, comparison))
-        {
-            return true;
-        }
+        if (string.Equals(fullCandidate, fullRoot, comparison)) return true;
+        if (fullCandidate.StartsWith(fullRoot + Path.DirectorySeparatorChar, comparison)) return true;
     }
 
     return false;
