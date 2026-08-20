@@ -15,7 +15,7 @@ builder.Services.AddSingleton<IFileSystemGateway, LocalFileSystemGateway>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
 builder.Services.AddSingleton<ShareDiscoveryService>();
 
-var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "/app/data/mediaflow.db";
+var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
     ?? ["/sources", "/destinations"];
 
@@ -123,7 +123,7 @@ app.MapGet("/api/v1/shares/{id:guid}/scan", async (
             files
         });
     }
-    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or DirectoryNotFoundException)
+    catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
     {
         return Results.Problem(
             title: "Share scan failed",
