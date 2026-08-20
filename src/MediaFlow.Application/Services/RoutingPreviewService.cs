@@ -10,6 +10,7 @@ public sealed class RoutingPreviewService(
     IMediaEventRepository events,
     ISourceGroupRepository sourceGroups,
     IShareRepository shares,
+    DestinationPathResolver destinationPaths,
     IClock clock)
 {
     public async Task<IReadOnlyList<RoutingPreviewItem>> PreviewAsync(
@@ -40,6 +41,9 @@ public sealed class RoutingPreviewService(
 
             var capturedAt = metadata.CapturedAt ?? file.LastWriteUtc;
             var timestampSource = metadata.TimestampSource ?? "FileLastWriteTimeUtc";
+            var fallbackMessage = metadata.CapturedAt is null && metadata.Error is not null
+                ? $"Metadata unavailable; FileLastWriteTimeUtc used as fallback. {metadata.Error}"
+                : null;
             var existing = await mediaFiles.GetBySourceAsync(sourceShare.Id, file.FullPath, cancellationToken);
             var now = clock.UtcNow;
 
@@ -54,23 +58,12 @@ public sealed class RoutingPreviewService(
                 MediaType = file.MediaType,
                 CapturedAt = capturedAt,
                 TimestampSource = timestampSource,
-                IsTimezoneInferred = metadata.TimeZoneInferred,
+                IsTimezoneInferred = metadata.TimeZoneInferred || metadata.CapturedAt is null,
                 Sha256 = existing?.Sha256,
                 FirstSeenAt = existing?.FirstSeenAt ?? now,
                 LastSeenAt = now
             };
             await mediaFiles.UpsertAsync(mediaFile, cancellationToken);
-
-            if (metadata.Error is not null && metadata.CapturedAt is null)
-            {
-                result.Add(new RoutingPreviewItem(
-                    mediaFile,
-                    RoutingPreviewState.MetadataFallback,
-                    null,
-                    null,
-                    metadata.Error));
-                continue;
-            }
 
             var candidateEvents = await events.ListMatchableAsync(capturedAt, cancellationToken);
             var matches = candidateEvents
@@ -79,7 +72,7 @@ public sealed class RoutingPreviewService(
 
             if (matches.Length == 0)
             {
-                result.Add(new RoutingPreviewItem(mediaFile, RoutingPreviewState.Unmatched, null, null, null));
+                result.Add(new RoutingPreviewItem(mediaFile, RoutingPreviewState.Unmatched, null, null, fallbackMessage));
                 continue;
             }
 
@@ -108,51 +101,16 @@ public sealed class RoutingPreviewService(
                 continue;
             }
 
-            var destinationPath = BuildDestinationPath(matchedEvent, sourceShare, destinationShare, mediaFile);
+            var destinationPath = destinationPaths.Resolve(matchedEvent, sourceShare, destinationShare, mediaFile);
             result.Add(new RoutingPreviewItem(
                 mediaFile,
                 RoutingPreviewState.Matched,
                 matchedEvent,
                 destinationPath,
-                null));
+                fallbackMessage));
         }
 
         return result;
-    }
-
-    private static string BuildDestinationPath(
-        MediaEvent mediaEvent,
-        Share sourceShare,
-        Share destinationShare,
-        MediaFile mediaFile)
-    {
-        var captured = mediaFile.CapturedAt ?? DateTimeOffset.UtcNow;
-        var folder = mediaEvent.DestinationFolderTemplate
-            .Replace("{event.name}", SafeSegment(mediaEvent.Name), StringComparison.OrdinalIgnoreCase)
-            .Replace("{event.type}", SafeSegment(mediaEvent.Type ?? "Event"), StringComparison.OrdinalIgnoreCase)
-            .Replace("{year}", captured.Year.ToString("0000"), StringComparison.OrdinalIgnoreCase)
-            .Replace("{month}", captured.Month.ToString("00"), StringComparison.OrdinalIgnoreCase)
-            .Replace("{day}", captured.Day.ToString("00"), StringComparison.OrdinalIgnoreCase)
-            .Replace("{source}", SafeSegment(sourceShare.Name), StringComparison.OrdinalIgnoreCase)
-            .Replace("{owner}", SafeSegment(sourceShare.Owner ?? sourceShare.Name), StringComparison.OrdinalIgnoreCase);
-
-        var root = Path.GetFullPath(destinationShare.Path);
-        var combined = Path.GetFullPath(Path.Combine(root, folder, mediaFile.OriginalName));
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        var rootWithSeparator = root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!combined.StartsWith(rootWithSeparator, comparison))
-        {
-            throw new InvalidOperationException("Destination template escapes the configured destination share.");
-        }
-
-        return combined;
-    }
-
-    private static string SafeSegment(string value)
-    {
-        var invalid = Path.GetInvalidFileNameChars().ToHashSet();
-        var cleaned = new string(value.Trim().Select(c => invalid.Contains(c) ? '_' : c).ToArray());
-        return string.IsNullOrWhiteSpace(cleaned) ? "unnamed" : cleaned;
     }
 }
 
