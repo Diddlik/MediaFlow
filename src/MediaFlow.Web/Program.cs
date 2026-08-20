@@ -5,6 +5,7 @@ using MediaFlow.Core.Domain;
 using MediaFlow.Infrastructure;
 using MediaFlow.Infrastructure.Metadata;
 using MediaFlow.Infrastructure.Persistence;
+using MediaFlow.Infrastructure.Runtime;
 using MediaFlow.Web.Api;
 using MediaFlow.Web.Background;
 
@@ -24,6 +25,17 @@ builder.Services.AddSingleton<RoutingPreviewService>();
 builder.Services.AddSingleton<SafeTransferService>();
 builder.Services.AddSingleton<TransferCoordinator>();
 builder.Services.AddSingleton<OperationRecoveryService>();
+builder.Services.AddSingleton<AutomationStatus>();
+
+var runtimeDefaults = new MediaFlowRuntimeSettings(
+    builder.Configuration.GetValue("MediaFlow:DryRun", true),
+    builder.Configuration.GetValue("MediaFlow:Automation:Enabled", true),
+    builder.Configuration.GetValue("MediaFlow:ReconciliationIntervalSeconds", 300),
+    builder.Configuration.GetValue("MediaFlow:Automation:MaxFilesPerSharePerCycle", 200),
+    builder.Configuration.GetValue("MediaFlow:Automation:AllowFilesystemTimestampFallback", false));
+var runtimeSettingsPath = builder.Configuration["MediaFlow:RuntimeSettingsPath"] ?? "data/runtime-settings.json";
+builder.Services.AddSingleton<IRuntimeSettingsStore>(
+    new JsonRuntimeSettingsStore(runtimeSettingsPath, runtimeDefaults));
 builder.Services.AddHostedService<MediaRoutingWorker>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
@@ -61,17 +73,25 @@ app.MapGet("/health", () => Results.Ok(new
     service = "MediaFlow"
 }));
 
-app.MapGet("/api/v1/info", (IClock clock) => Results.Ok(new
+app.MapGet("/api/v1/info", async (
+    IClock clock,
+    IRuntimeSettingsStore settingsStore,
+    CancellationToken ct) =>
 {
-    name = "MediaFlow",
-    status = "automation",
-    utcNow = clock.UtcNow,
-    dryRun = builder.Configuration.GetValue("MediaFlow:DryRun", true),
-    automationEnabled = builder.Configuration.GetValue("MediaFlow:Automation:Enabled", true),
-    reconciliationIntervalSeconds = builder.Configuration.GetValue("MediaFlow:ReconciliationIntervalSeconds", 300),
-    allowFilesystemTimestampFallback = builder.Configuration.GetValue("MediaFlow:Automation:AllowFilesystemTimestampFallback", false),
-    allowedRoots
-}));
+    var settings = await settingsStore.GetAsync(ct);
+    return Results.Ok(new
+    {
+        name = "MediaFlow",
+        status = "automation",
+        utcNow = clock.UtcNow,
+        settings.DryRun,
+        settings.AutomationEnabled,
+        settings.ReconciliationIntervalSeconds,
+        settings.MaxFilesPerSharePerCycle,
+        settings.AllowFilesystemTimestampFallback,
+        allowedRoots
+    });
+});
 
 app.MapGet("/api/v1/share-presets", () => Results.Ok(SharePresets.All));
 
@@ -231,6 +251,7 @@ app.MapSourceGroupEndpoints();
 app.MapEventEndpoints();
 app.MapRoutingEndpoints();
 app.MapTransferEndpoints();
+app.MapSettingsEndpoints();
 
 app.Run();
 
