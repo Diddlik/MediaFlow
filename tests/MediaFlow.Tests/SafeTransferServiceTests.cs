@@ -114,6 +114,24 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
         Assert.Equal(fixture.SourceBytes, File.ReadAllBytes(fixture.Operations.LastPersisted.DestinationPath!));
     }
 
+    [Fact]
+    public async Task Coordinator_ConcurrentCalls_ExecuteExactlyOneTransfer()
+    {
+        var fixture = await CreateFixtureAsync();
+        fixture.FileSystem.CopyDelay = TimeSpan.FromMilliseconds(150);
+
+        var first = fixture.Coordinator.ExecuteOnceAsync(fixture.Media.Id, fixture.Event.Id);
+        var second = fixture.Coordinator.ExecuteOnceAsync(fixture.Media.Id, fixture.Event.Id);
+        var results = await Task.WhenAll(first, second);
+
+        Assert.Single(results.Where(x => x.Executed));
+        Assert.Single(results.Where(x => !x.Executed));
+        Assert.False(File.Exists(fixture.Media.SourcePath));
+        var persisted = await fixture.Operations.ListRecentAsync();
+        Assert.Single(persisted.Where(x => x.MediaFileId == fixture.Media.Id));
+        Assert.Equal(MediaOperationState.Completed, persisted.Single(x => x.MediaFileId == fixture.Media.Id).State);
+    }
+
     private async Task<Fixture> CreateFixtureAsync()
     {
         var sourceShare = new Share
@@ -198,8 +216,9 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
             new TestHashService(),
             new DestinationPathResolver(),
             new FixedClock(capturedAt.AddHours(1)));
+        var coordinator = new TransferCoordinator(operations, service);
 
-        return new Fixture(service, operations, fileSystem, media, mediaEvent, sourceBytes);
+        return new Fixture(service, coordinator, operations, fileSystem, media, mediaEvent, sourceBytes);
     }
 
     private static bool PathEquals(string left, string right) =>
@@ -210,6 +229,7 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
 
     private sealed record Fixture(
         SafeTransferService Service,
+        TransferCoordinator Coordinator,
         TrackingOperationRepository Operations,
         TrackingFileSystemGateway FileSystem,
         MediaFile Media,
@@ -235,6 +255,7 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
         public Action<string>? BeforeDelete { get; set; }
         public Action<string, string>? AfterCopy { get; set; }
         public bool ThrowOnSourceDelete { get; set; }
+        public TimeSpan CopyDelay { get; set; }
         public int SourceDeleteCount { get; private set; }
 
         public bool FileExists(string path) => inner.FileExists(path);
@@ -248,6 +269,7 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
 
         public async Task CopyFileAsync(string source, string destination, CancellationToken cancellationToken = default)
         {
+            if (CopyDelay > TimeSpan.Zero) await Task.Delay(CopyDelay, cancellationToken);
             await inner.CopyFileAsync(source, destination, cancellationToken);
             AfterCopy?.Invoke(source, destination);
         }
