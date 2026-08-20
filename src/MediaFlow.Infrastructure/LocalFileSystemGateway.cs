@@ -57,5 +57,18 @@ public sealed class LocalFileSystemGateway : IFileSystemGateway
         await destination.FlushAsync(cancellationToken);
     }
 
+    public void MoveFile(string sourcePath, string destinationPath)
+    {
+        var destinationDirectory = Path.GetDirectoryName(destinationPath);
+        if (!string.IsNullOrWhiteSpace(destinationDirectory))
+        {
+            Directory.CreateDirectory(destinationDirectory);
+        }
+
+        File.Move(sourcePath, destinationPath, overwrite: false);
+    }
+
+    public void DeleteFile(string path) => File.Delete(path);
+
     public void EnsureDirectory(string path) => Directory.CreateDirectory(path);
 }
