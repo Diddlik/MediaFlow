@@ -15,11 +15,11 @@ public static class TransferEndpoints
 
         app.MapPost("/api/v1/transfers", async (
             TransferRequest request,
-            IConfiguration configuration,
+            IRuntimeSettingsStore settingsStore,
             TransferCoordinator transfer,
             CancellationToken ct) =>
         {
-            if (IsDryRun(configuration)) return DryRunConflict();
+            if ((await settingsStore.GetAsync(ct)).DryRun) return DryRunConflict();
 
             try
             {
@@ -37,7 +37,7 @@ public static class TransferEndpoints
 
         app.MapPost("/api/v1/operations/{id:guid}/retry", async (
             Guid id,
-            IConfiguration configuration,
+            IRuntimeSettingsStore settingsStore,
             IMediaOperationRepository operations,
             IMediaEventRepository events,
             IShareRepository shares,
@@ -46,7 +46,7 @@ public static class TransferEndpoints
             IClock clock,
             CancellationToken ct) =>
         {
-            if (IsDryRun(configuration)) return DryRunConflict();
+            if ((await settingsStore.GetAsync(ct)).DryRun) return DryRunConflict();
 
             try
             {
@@ -70,12 +70,9 @@ public static class TransferEndpoints
         return app;
     }
 
-    private static bool IsDryRun(IConfiguration configuration) =>
-        configuration.GetValue("MediaFlow:DryRun", true);
-
     private static IResult DryRunConflict() => Results.Conflict(new
     {
-        error = "MediaFlow is in DryRun mode. Set MediaFlow:DryRun=false before executing or retrying transfers."
+        error = "MediaFlow is in Dry Run mode. Disable Dry Run in Settings before executing or retrying transfers."
     });
 }
 
