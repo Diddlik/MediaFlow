@@ -42,12 +42,12 @@
 - [x] runtime Dry Run / Live settings
 - [x] worker status
 - [x] destination storage status
-- [ ] dedicated quarantine management view
+- [x] dedicated quarantine management view
 
 ## v0.4 — Integrations
 
 - [x] REST API
-- [ ] OpenAPI document/UI
+- [x] OpenAPI document/UI
 - [x] optional MQTT event control
 - [x] Home Assistant REST examples
 - [x] Home Assistant MQTT examples
@@ -66,7 +66,7 @@
 - [x] GitHub Actions build + tests + Docker validation
 - [x] GHCR publishing
 - [x] destination free-space guard with reserve
-- [ ] onboarding wizard
+- [x] onboarding wizard
 
 ## v0.6 — Operations and maintainability
 
@@ -78,17 +78,32 @@
 - [x] semantic versioning and release process
 - [x] transactional SQLite schema migration framework
 - [x] downgrade guard for newer database schemas
-- [ ] configurable destination free-space reserve
-- [ ] structured audit export
-- [ ] dedicated metrics endpoint / Prometheus
+- [x] configurable destination free-space reserve
+- [x] structured audit export
+- [x] dedicated metrics endpoint / Prometheus
+
+## v0.7 — Safe container updates
+
+- [x] show the running image version and latest stable version in the Web UI
+- [x] manual **Check for updates** action
+- [x] display the selected release changelog before installation
+- [x] manual **Install update** action with explicit confirmation and visible result
+- [x] opt-in automatic stable-image updates; manual mode remains the default
+- [x] persist update mode and expose the last check/update result in the Web UI
+- [x] narrow updater-companion integration; do not expose the Docker socket to MediaFlow
+- [x] record a replacement as completed after the expected version starts healthy
+- [x] automated tests for version selection, exact confirmation, companion failure and healthy restart reporting
+- [ ] automatic rollback when the replacement container remains unhealthy
+- [ ] automated rollback integration test against a Docker daemon
 
 ## v1.0 — First stable release
 
 - [x] critical source-deletion invariant covered by automated tests
 - [x] restart recovery behavior implemented
 - [x] database migration/versioning strategy finalized
-- [ ] quarantine workflow finalized
-- [ ] OpenAPI finalized
+- [x] quarantine workflow finalized
+- [x] OpenAPI finalized
+- [ ] safe container update workflow finalized
 - [ ] first tagged stable release
 
 ## Later

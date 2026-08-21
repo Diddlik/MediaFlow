@@ -19,6 +19,35 @@ public sealed class SqliteMediaOperationRepository(SqliteConnectionFactory conne
         return result;
     }
 
+    public async Task<IReadOnlyList<MediaOperation>> ListByStateAsync(
+        MediaOperationState state,
+        int limit = 200,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new List<MediaOperation>();
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {SelectColumns} FROM operations WHERE state = $state ORDER BY updated_at_utc DESC LIMIT $limit";
+        command.Parameters.AddWithValue("$state", (int)state);
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 5000));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken)) result.Add(Read(reader));
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<MediaOperationState, long>> CountByStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<MediaOperationState, long>();
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT state, COUNT(*) FROM operations GROUP BY state";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            result[(MediaOperationState)reader.GetInt32(0)] = reader.GetInt64(1);
+        return result;
+    }
+
     public async Task<IReadOnlyList<MediaOperation>> ListIncompleteAsync(CancellationToken cancellationToken = default)
     {
         var result = new List<MediaOperation>();

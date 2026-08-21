@@ -294,6 +294,10 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
 
         public Task<IReadOnlyList<MediaOperation>> ListRecentAsync(int limit = 200, CancellationToken cancellationToken = default) =>
             inner.ListRecentAsync(limit, cancellationToken);
+        public Task<IReadOnlyList<MediaOperation>> ListByStateAsync(MediaOperationState state, int limit = 200, CancellationToken cancellationToken = default) =>
+            inner.ListByStateAsync(state, limit, cancellationToken);
+        public Task<IReadOnlyDictionary<MediaOperationState, long>> CountByStateAsync(CancellationToken cancellationToken = default) =>
+            inner.CountByStateAsync(cancellationToken);
         public Task<IReadOnlyList<MediaOperation>> ListIncompleteAsync(CancellationToken cancellationToken = default) =>
             inner.ListIncompleteAsync(cancellationToken);
         public Task<MediaOperation?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>

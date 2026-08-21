@@ -2,6 +2,8 @@ using MediaFlow.Application.Abstractions;
 using MediaFlow.Core.Domain;
 using MediaFlow.Infrastructure;
 using MediaFlow.Web.Background;
+using System.Globalization;
+using System.Text;
 
 namespace MediaFlow.Web.Api;
 
@@ -25,6 +27,8 @@ public static class SettingsEndpoints
                 return Results.BadRequest(new { error = "ReconciliationIntervalSeconds must be between 15 and 86400." });
             if (request.MaxFilesPerSharePerCycle is < 1 or > 2000)
                 return Results.BadRequest(new { error = "MaxFilesPerSharePerCycle must be between 1 and 2000." });
+            if (request.MinimumFreeSpaceReserveBytes is < 0 or > 1099511627776)
+                return Results.BadRequest(new { error = "MinimumFreeSpaceReserveBytes must be between 0 and 1099511627776." });
 
             var current = await store.GetAsync(ct);
             if (current.DryRun && !request.DryRun &&
@@ -41,7 +45,9 @@ public static class SettingsEndpoints
                 request.AutomationEnabled,
                 request.ReconciliationIntervalSeconds,
                 request.MaxFilesPerSharePerCycle,
-                request.AllowFilesystemTimestampFallback), ct);
+                request.AllowFilesystemTimestampFallback,
+                request.MinimumFreeSpaceReserveBytes ?? current.MinimumFreeSpaceReserveBytes,
+                request.AutomaticImageUpdatesEnabled ?? current.AutomaticImageUpdatesEnabled), ct);
 
             return Results.Ok(updated);
         });
@@ -63,6 +69,8 @@ public static class SettingsEndpoints
                 settings.ReconciliationIntervalSeconds,
                 settings.MaxFilesPerSharePerCycle,
                 settings.AllowFilesystemTimestampFallback,
+                settings.MinimumFreeSpaceReserveBytes,
+                settings.AutomaticImageUpdatesEnabled,
                 automation = automationStatus.Snapshot()
             });
         });
@@ -70,8 +78,10 @@ public static class SettingsEndpoints
         app.MapGet("/api/v1/storage", async (
             IShareRepository shares,
             IFileSystemGateway fileSystem,
+            IRuntimeSettingsStore store,
             CancellationToken ct) =>
         {
+            var settings = await store.GetAsync(ct);
             var destinations = (await shares.ListAsync(ct))
                 .Where(x => x.Enabled && x.Role is ShareRole.Destination or ShareRole.Both)
                 .ToArray();
@@ -96,15 +106,45 @@ public static class SettingsEndpoints
                     share.Path,
                     fileSystem.DirectoryExists(share.Path),
                     freeBytes,
-                    freeBytes is long value && value < LocalFileSystemGateway.MinimumFreeSpaceReserveBytes,
+                    freeBytes is long value && value < settings.MinimumFreeSpaceReserveBytes,
                     error));
             }
 
             return Results.Ok(new
             {
-                minimumFreeSpaceReserveBytes = LocalFileSystemGateway.MinimumFreeSpaceReserveBytes,
+                settings.MinimumFreeSpaceReserveBytes,
                 items
             });
+        });
+
+        app.MapGet("/metrics", async (
+            IRuntimeSettingsStore store,
+            IMediaOperationRepository operations,
+            AutomationStatus automationStatus,
+            CancellationToken ct) =>
+        {
+            var settings = await store.GetAsync(ct);
+            var counts = await operations.CountByStateAsync(ct);
+            var automation = automationStatus.Snapshot();
+            var metrics = new StringBuilder()
+                .AppendLine("# HELP mediaflow_automation_enabled Whether automatic reconciliation is enabled.")
+                .AppendLine("# TYPE mediaflow_automation_enabled gauge")
+                .Append("mediaflow_automation_enabled ").AppendLine(settings.AutomationEnabled ? "1" : "0")
+                .AppendLine("# HELP mediaflow_dry_run Whether destructive transfers are disabled.")
+                .AppendLine("# TYPE mediaflow_dry_run gauge")
+                .Append("mediaflow_dry_run ").AppendLine(settings.DryRun ? "1" : "0")
+                .AppendLine("# HELP mediaflow_operations_total Persisted operations by current state.")
+                .AppendLine("# TYPE mediaflow_operations_total gauge");
+            foreach (var state in Enum.GetValues<MediaFlow.Core.Domain.MediaOperationState>())
+                metrics.Append("mediaflow_operations_total{state=\"")
+                    .Append(state.ToString().ToLowerInvariant())
+                    .Append("\"} ")
+                    .AppendLine(counts.GetValueOrDefault(state).ToString(CultureInfo.InvariantCulture));
+            metrics.AppendLine("# HELP mediaflow_last_cycle_errors Errors in the latest reconciliation cycle.")
+                .AppendLine("# TYPE mediaflow_last_cycle_errors gauge")
+                .Append("mediaflow_last_cycle_errors ")
+                .AppendLine(automation.LastErrors.ToString(CultureInfo.InvariantCulture));
+            return Results.Text(metrics.ToString(), "text/plain; version=0.0.4; charset=utf-8");
         });
 
         return app;
@@ -117,6 +157,8 @@ public sealed record RuntimeSettingsRequest(
     int ReconciliationIntervalSeconds,
     int MaxFilesPerSharePerCycle,
     bool AllowFilesystemTimestampFallback,
+    long? MinimumFreeSpaceReserveBytes = null,
+    bool? AutomaticImageUpdatesEnabled = null,
     string? LiveModeConfirmation = null);
 
 public sealed record StorageShareStatus(

@@ -18,8 +18,8 @@ public sealed class OperationRetryService(
         var operation = await operations.GetAsync(operationId, cancellationToken)
             ?? throw new InvalidOperationException("Operation does not exist.");
 
-        if (operation.State != MediaOperationState.RetryPending)
-            throw new InvalidOperationException("Only RetryPending operations can be retried automatically.");
+        if (operation.State is not (MediaOperationState.RetryPending or MediaOperationState.Quarantined))
+            throw new InvalidOperationException("Only retry-pending or quarantined operations can be retried explicitly.");
         if (operation.EventId is null)
             throw new InvalidOperationException("Operation has no event and cannot be retried.");
 

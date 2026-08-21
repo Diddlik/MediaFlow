@@ -26,6 +26,8 @@ function applySettingsToForm(settings) {
   settingsById('settingsInterval').value = settings.reconciliationIntervalSeconds;
   settingsById('settingsMaxFiles').value = settings.maxFilesPerSharePerCycle;
   settingsById('settingsTimestampFallback').checked = settings.allowFilesystemTimestampFallback;
+  settingsById('settingsFreeSpaceReserve').value = Math.round(settings.minimumFreeSpaceReserveBytes / 1048576);
+  settingsById('settingsAutomaticImageUpdates').checked = settings.automaticImageUpdatesEnabled;
   updateModeBadge(settings);
 
   if (typeof appInfo !== 'undefined') {
@@ -126,6 +128,8 @@ settingsById('settingsForm').addEventListener('submit', async (event) => {
     reconciliationIntervalSeconds: Number(settingsById('settingsInterval').value),
     maxFilesPerSharePerCycle: Number(settingsById('settingsMaxFiles').value),
     allowFilesystemTimestampFallback: settingsById('settingsTimestampFallback').checked,
+    minimumFreeSpaceReserveBytes: Number(settingsById('settingsFreeSpaceReserve').value) * 1048576,
+    automaticImageUpdatesEnabled: settingsById('settingsAutomaticImageUpdates').checked,
     liveModeConfirmation
   };
 
@@ -162,3 +166,44 @@ settingsById('refreshAutomationStatus').addEventListener('click', loadAutomation
 loadRuntimeSettings();
 loadAutomationStatus();
 setInterval(loadAutomationStatus, 15000);
+
+function renderImageUpdate(status) {
+  const target = settingsById('imageUpdateStatus');
+  const changelog = settingsById('imageUpdateChangelog');
+  const install = settingsById('installImageUpdate');
+  const latest = status.latestVersion ? ` · latest ${status.latestVersion}` : '';
+  const completed = status.lastUpdateCompletedAt ? ` · updated ${new Date(status.lastUpdateCompletedAt).toLocaleString()}` : '';
+  target.textContent = `Running ${status.runningVersion}${latest}${completed}${status.lastError ? ` · ${status.lastError}` : ''}`;
+  changelog.textContent = status.changelog || '';
+  changelog.classList.toggle('hidden', !status.changelog);
+  install.classList.toggle('hidden', !status.updateAvailable);
+  install.disabled = !status.updaterConfigured;
+  install.title = status.updaterConfigured ? '' : 'Updater companion is not configured';
+}
+
+async function checkImageUpdate() {
+  const target = settingsById('imageUpdateStatus');
+  target.textContent = 'Checking for stable image updates…';
+  try {
+    renderImageUpdate(await settingsRequest('/api/v1/updates/check', { method: 'POST' }));
+  } catch (error) {
+    target.textContent = `Update check failed: ${error.message}`;
+  }
+}
+
+settingsById('checkImageUpdate').addEventListener('click', checkImageUpdate);
+settingsById('installImageUpdate').addEventListener('click', async () => {
+  const confirmation = prompt('The MediaFlow container will restart. Type INSTALL_UPDATE to continue.');
+  if (confirmation !== 'INSTALL_UPDATE') return;
+  try {
+    renderImageUpdate(await settingsRequest('/api/v1/updates/install', {
+      method: 'POST',
+      body: JSON.stringify({ confirmation })
+    }));
+    settingsById('imageUpdateStatus').textContent = 'Update requested. MediaFlow may restart shortly.';
+  } catch (error) {
+    settingsById('imageUpdateStatus').textContent = `Update failed: ${error.message}`;
+  }
+});
+
+settingsRequest('/api/v1/updates').then(renderImageUpdate).catch(() => {});

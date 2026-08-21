@@ -2,9 +2,9 @@ using MediaFlow.Application.Abstractions;
 
 namespace MediaFlow.Infrastructure;
 
-public sealed class LocalFileSystemGateway : IFileSystemGateway
+public sealed class LocalFileSystemGateway(IRuntimeSettingsStore? settingsStore = null) : IFileSystemGateway
 {
-    public const long MinimumFreeSpaceReserveBytes = 512L * 1024L * 1024L;
+    public const long DefaultMinimumFreeSpaceReserveBytes = 512L * 1024L * 1024L;
 
     public bool FileExists(string path) => File.Exists(path);
 
@@ -69,16 +69,19 @@ public sealed class LocalFileSystemGateway : IFileSystemGateway
 
         var sourceLength = new FileInfo(sourcePath).Length;
         var available = GetAvailableFreeSpace(destinationDirectory ?? destinationPath);
+        var reserve = settingsStore is null
+            ? DefaultMinimumFreeSpaceReserveBytes
+            : (await settingsStore.GetAsync(cancellationToken)).MinimumFreeSpaceReserveBytes;
         if (available is long availableBytes)
         {
-            var required = sourceLength > long.MaxValue - MinimumFreeSpaceReserveBytes
+            var required = sourceLength > long.MaxValue - reserve
                 ? long.MaxValue
-                : sourceLength + MinimumFreeSpaceReserveBytes;
+                : sourceLength + reserve;
             if (availableBytes < required)
             {
                 throw new IOException(
                     $"Insufficient destination free space. Required at least {required} bytes " +
-                    $"({sourceLength} byte file + {MinimumFreeSpaceReserveBytes} byte reserve), " +
+                    $"({sourceLength} byte file + {reserve} byte reserve), " +
                     $"but only {availableBytes} bytes are available.");
             }
         }

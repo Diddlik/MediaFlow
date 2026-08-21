@@ -13,5 +13,6 @@
     <ProjectReference Include="..\..\src\MediaFlow.Core\MediaFlow.Core.csproj" />
     <ProjectReference Include="..\..\src\MediaFlow.Application\MediaFlow.Application.csproj" />
     <ProjectReference Include="..\..\src\MediaFlow.Infrastructure\MediaFlow.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\MediaFlow.Web\MediaFlow.Web.csproj" />
   </ItemGroup>
 </Project>

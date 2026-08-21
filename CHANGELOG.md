@@ -33,6 +33,13 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 - GHCR publishing with `latest`, commit SHA and SemVer tags.
 - backup/restore, security, contributing, database migration and release documentation.
 - Dependabot configuration for NuGet, Docker and GitHub Actions.
+- quarantine review UI with audit-preserving manual dismissal.
+- OpenAPI 3.1 document and Swagger UI at `/docs/`.
+- configurable destination free-space reserve in runtime settings.
+- CSV operation audit export and Prometheus-compatible `/metrics` endpoint.
+- guided first-run onboarding.
+- stable image update checks, changelog display, opt-in automatic updates and confirmed manual update triggering through an isolated Watchtower companion.
+- release-tag version injection and persisted healthy-restart/update-failure reporting.
 
 ### Changed
 

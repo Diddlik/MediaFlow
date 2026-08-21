@@ -1,5 +1,6 @@
 using MediaFlow.Application.Abstractions;
 using MediaFlow.Application.Services;
+using System.Text;
 
 namespace MediaFlow.Web.Api;
 
@@ -12,6 +13,47 @@ public static class TransferEndpoints
             IMediaOperationRepository repository,
             CancellationToken ct) =>
             Results.Ok(await repository.ListRecentAsync(Math.Clamp(limit ?? 200, 1, 2000), ct)));
+
+        app.MapGet("/api/v1/operations/export.csv", async (
+            int? limit,
+            IMediaOperationRepository repository,
+            CancellationToken ct) =>
+        {
+            var csv = AuditExportService.ToCsv(await repository.ListRecentAsync(Math.Clamp(limit ?? 5000, 1, 5000), ct));
+            return Results.File(
+                Encoding.UTF8.GetBytes(csv),
+                "text/csv; charset=utf-8",
+                $"mediaflow-audit-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.csv");
+        });
+
+        app.MapGet("/api/v1/quarantine", async (
+            int? limit,
+            IMediaOperationRepository repository,
+            CancellationToken ct) =>
+            Results.Ok(await repository.ListByStateAsync(
+                MediaFlow.Core.Domain.MediaOperationState.Quarantined,
+                Math.Clamp(limit ?? 200, 1, 2000),
+                ct)));
+
+        app.MapPost("/api/v1/quarantine/{id:guid}/dismiss", async (
+            Guid id,
+            QuarantineDismissRequest request,
+            QuarantineService quarantine,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                return Results.Ok(await quarantine.DismissAsync(id, request.ResolutionNote, ct));
+            }
+            catch (FileNotFoundException ex)
+            {
+                return Results.NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
 
         app.MapPost("/api/v1/transfers", async (
             TransferRequest request,
@@ -77,3 +119,4 @@ public static class TransferEndpoints
 }
 
 public sealed record TransferRequest(Guid MediaFileId, Guid EventId);
+public sealed record QuarantineDismissRequest(string? ResolutionNote);

@@ -9,11 +9,14 @@ using MediaFlow.Infrastructure.Runtime;
 using MediaFlow.Web.Api;
 using MediaFlow.Web.Background;
 using MediaFlow.Web.Integrations;
+using MediaFlow.Web.Updates;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddOpenApi();
+builder.Services.AddHttpClient();
 
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<IFileSystemGateway, LocalFileSystemGateway>();
@@ -27,6 +30,7 @@ builder.Services.AddSingleton<SafeTransferService>();
 builder.Services.AddSingleton<TransferCoordinator>();
 builder.Services.AddSingleton<OperationRecoveryService>();
 builder.Services.AddSingleton<EventControlService>();
+builder.Services.AddSingleton<QuarantineService>();
 builder.Services.AddSingleton<AutomationStatus>();
 builder.Services.AddSingleton<AutomationWakeSignal>();
 
@@ -35,13 +39,27 @@ var runtimeDefaults = new MediaFlowRuntimeSettings(
     builder.Configuration.GetValue("MediaFlow:Automation:Enabled", true),
     builder.Configuration.GetValue("MediaFlow:ReconciliationIntervalSeconds", 300),
     builder.Configuration.GetValue("MediaFlow:Automation:MaxFilesPerSharePerCycle", 200),
-    builder.Configuration.GetValue("MediaFlow:Automation:AllowFilesystemTimestampFallback", false));
+    builder.Configuration.GetValue("MediaFlow:Automation:AllowFilesystemTimestampFallback", false),
+    builder.Configuration.GetValue("MediaFlow:MinimumFreeSpaceReserveBytes", LocalFileSystemGateway.DefaultMinimumFreeSpaceReserveBytes),
+    builder.Configuration.GetValue("MediaFlow:Updates:Automatic", false));
 var runtimeSettingsPath = builder.Configuration["MediaFlow:RuntimeSettingsPath"] ?? "data/runtime-settings.json";
 builder.Services.AddSingleton<IRuntimeSettingsStore>(
     new JsonRuntimeSettingsStore(runtimeSettingsPath, runtimeDefaults));
 builder.Services.AddHostedService<SourceShareWatcherWorker>();
 builder.Services.AddHostedService<MediaRoutingWorker>();
 builder.Services.AddHostedService<MqttIntegrationWorker>();
+var runningVersion = builder.Configuration["MediaFlow:Updates:CurrentVersion"]
+    ?? typeof(Program).Assembly.GetName().Version?.ToString(3)
+    ?? "0.0.0";
+builder.Services.AddSingleton(new ImageUpdateOptions(
+    builder.Configuration["MediaFlow:Updates:ReleaseApiUrl"] ?? "https://api.github.com/repos/diddlik/MediaFlow/releases/latest",
+    builder.Configuration["MediaFlow:Updates:WatchtowerUrl"],
+    builder.Configuration["MediaFlow:Updates:WatchtowerToken"],
+    runningVersion));
+builder.Services.AddSingleton<IImageUpdateStatusStore>(new JsonImageUpdateStatusStore(
+    builder.Configuration["MediaFlow:Updates:StatusPath"] ?? "data/update-status.json"));
+builder.Services.AddSingleton<ImageUpdateService>();
+builder.Services.AddHostedService<ImageUpdateWorker>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
@@ -71,6 +89,12 @@ if (recoveryReport.Total > 0)
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.MapOpenApi();
+app.UseSwaggerUI(options =>
+{
+    options.RoutePrefix = "docs";
+    options.SwaggerEndpoint("/openapi/v1.json", "MediaFlow API v1");
+});
 
 app.MapGet("/health", () => Results.Ok(new
 {
@@ -94,6 +118,7 @@ app.MapGet("/api/v1/info", async (
         settings.ReconciliationIntervalSeconds,
         settings.MaxFilesPerSharePerCycle,
         settings.AllowFilesystemTimestampFallback,
+        settings.MinimumFreeSpaceReserveBytes,
         filesystemWatcherEnabled = true,
         mqttEnabled = builder.Configuration.GetValue("MediaFlow:Mqtt:Enabled", false),
         allowedRoots
@@ -259,6 +284,7 @@ app.MapEventEndpoints();
 app.MapRoutingEndpoints();
 app.MapTransferEndpoints();
 app.MapSettingsEndpoints();
+app.MapUpdateEndpoints();
 
 app.Run();
 
