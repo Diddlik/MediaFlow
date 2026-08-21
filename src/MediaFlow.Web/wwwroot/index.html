@@ -16,6 +16,47 @@
   </header>
 
   <main>
+    <section id="onboardingPanel" class="panel hidden" aria-labelledby="onboardingTitle">
+      <div class="section-title">
+        <div>
+          <h2 id="onboardingTitle">Get MediaFlow ready</h2>
+          <p>Complete the setup in order. MediaFlow stays in Dry Run until you explicitly enable Live mode.</p>
+        </div>
+        <button id="dismissOnboarding" class="secondary" type="button">Hide guide</button>
+      </div>
+      <ol id="onboardingSteps" class="setup-steps"></ol>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Image updates</h2>
+          <p>Check stable GHCR releases, review their changelog, then update through the isolated companion.</p>
+        </div>
+        <button id="checkImageUpdate" type="button">Check for updates</button>
+      </div>
+      <div class="checks">
+        <label><input id="settingsAutomaticImageUpdates" type="checkbox" form="settingsForm" /> Automatically install stable image updates</label>
+      </div>
+      <p id="imageUpdateStatus" class="message" aria-live="polite">No update check performed yet.</p>
+      <pre id="imageUpdateChangelog" class="changelog hidden"></pre>
+      <div class="actions">
+        <button id="installImageUpdate" class="good hidden" type="button">Install update</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Quarantine</h2>
+          <p>Review safety failures. Dismissing an item preserves the source and records your resolution note.</p>
+        </div>
+        <button id="refreshQuarantine" type="button">Refresh</button>
+      </div>
+      <p id="quarantineMessage" class="message" aria-live="polite"></p>
+      <div id="quarantineList" class="card-list"></div>
+    </section>
+
     <section class="panel">
       <div class="section-title">
         <div>
@@ -32,6 +73,9 @@
           </label>
           <label>Max files per source / cycle
             <input id="settingsMaxFiles" type="number" min="1" max="2000" required />
+          </label>
+          <label>Destination free-space reserve (MiB)
+            <input id="settingsFreeSpaceReserve" type="number" min="0" max="1048576" required />
           </label>
         </div>
         <div class="checks">
@@ -212,6 +256,10 @@
         <button id="refreshOperations" type="button">Refresh</button>
       </div>
       <div id="operationList" class="card-list"></div>
+      <div class="actions">
+        <a class="button-link" href="/api/v1/operations/export.csv">Download audit CSV</a>
+        <a class="button-link secondary" href="/docs/">Open API documentation</a>
+      </div>
     </section>
   </main>
 

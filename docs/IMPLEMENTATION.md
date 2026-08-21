@@ -1006,3 +1006,6 @@ V1 is acceptable when a user can:
 - contributor guide;
 - release workflow;
 - semantic versioning.
+- quarantine management, audit export and operational metrics;
+- opt-in image updates through a narrowly scoped companion service;
+- update changelog, confirmation and result display in the Web UI.

@@ -1,11 +1,14 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
+ARG VERSION=0.0.0-dev
 
 COPY . .
 RUN dotnet restore MediaFlow.sln
 RUN dotnet publish src/MediaFlow.Web/MediaFlow.Web.csproj \
     --configuration Release \
     --no-restore \
+    -p:Version="$VERSION" \
+    -p:InformationalVersion="$VERSION" \
     --output /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

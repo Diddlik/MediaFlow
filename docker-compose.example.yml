@@ -1,6 +1,6 @@
 services:
   mediaflow:
-    image: ghcr.io/diddlik/mediaflow:latest
+    image: ${MEDIAFLOW_IMAGE:-ghcr.io/diddlik/mediaflow:latest}
     container_name: mediaflow
     restart: unless-stopped
     ports:
@@ -15,6 +15,7 @@ services:
       MediaFlow__ReconciliationIntervalSeconds: "300"
       MediaFlow__Automation__MaxFilesPerSharePerCycle: "200"
       MediaFlow__Automation__AllowFilesystemTimestampFallback: "false"
+      MediaFlow__MinimumFreeSpaceReserveBytes: "536870912"
 
       # Optional MQTT integration. Disabled by default.
       MediaFlow__Mqtt__Enabled: "false"
@@ -45,3 +46,22 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.scope=mediaflow"
+
+  # Optional update companion. Set the same strong token in both services:
+  # MediaFlow__Updates__WatchtowerUrl=http://mediaflow-updater:8080
+  # MediaFlow__Updates__WatchtowerToken=<token>
+  # mediaflow-updater:
+  #   image: containrrr/watchtower:1.7.1
+  #   container_name: mediaflow-updater
+  #   restart: unless-stopped
+  #   command: --http-api-update --label-enable --scope mediaflow
+  #   environment:
+  #     WATCHTOWER_HTTP_API_TOKEN: <same-token>
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   labels:
+  #     - "com.centurylinklabs.watchtower.enable=false"

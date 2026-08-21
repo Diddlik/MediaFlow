@@ -103,6 +103,7 @@ public sealed class JsonRuntimeSettingsStore(
     private static MediaFlowRuntimeSettings Normalize(MediaFlowRuntimeSettings settings) => settings with
     {
         ReconciliationIntervalSeconds = Math.Clamp(settings.ReconciliationIntervalSeconds, 15, 86400),
-        MaxFilesPerSharePerCycle = Math.Clamp(settings.MaxFilesPerSharePerCycle, 1, 2000)
+        MaxFilesPerSharePerCycle = Math.Clamp(settings.MaxFilesPerSharePerCycle, 1, 2000),
+        MinimumFreeSpaceReserveBytes = Math.Clamp(settings.MinimumFreeSpaceReserveBytes, 0, 1L * 1024 * 1024 * 1024 * 1024)
     };
 }

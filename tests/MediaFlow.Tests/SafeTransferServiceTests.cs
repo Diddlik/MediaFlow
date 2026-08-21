@@ -124,12 +124,12 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
         var second = fixture.Coordinator.ExecuteOnceAsync(fixture.Media.Id, fixture.Event.Id);
         var results = await Task.WhenAll(first, second);
 
-        Assert.Single(results.Where(x => x.Executed));
-        Assert.Single(results.Where(x => !x.Executed));
+        Assert.Single(results, x => x.Executed);
+        Assert.Single(results, x => !x.Executed);
         Assert.False(File.Exists(fixture.Media.SourcePath));
         var persisted = await fixture.Operations.ListRecentAsync();
-        Assert.Single(persisted.Where(x => x.MediaFileId == fixture.Media.Id));
-        Assert.Equal(MediaOperationState.Completed, persisted.Single(x => x.MediaFileId == fixture.Media.Id).State);
+        var operation = Assert.Single(persisted, x => x.MediaFileId == fixture.Media.Id);
+        Assert.Equal(MediaOperationState.Completed, operation.State);
     }
 
     private async Task<Fixture> CreateFixtureAsync()
@@ -294,6 +294,10 @@ public sealed class SafeTransferServiceTests : IAsyncLifetime
 
         public Task<IReadOnlyList<MediaOperation>> ListRecentAsync(int limit = 200, CancellationToken cancellationToken = default) =>
             inner.ListRecentAsync(limit, cancellationToken);
+        public Task<IReadOnlyList<MediaOperation>> ListByStateAsync(MediaOperationState state, int limit = 200, CancellationToken cancellationToken = default) =>
+            inner.ListByStateAsync(state, limit, cancellationToken);
+        public Task<IReadOnlyDictionary<MediaOperationState, long>> CountByStateAsync(CancellationToken cancellationToken = default) =>
+            inner.CountByStateAsync(cancellationToken);
         public Task<IReadOnlyList<MediaOperation>> ListIncompleteAsync(CancellationToken cancellationToken = default) =>
             inner.ListIncompleteAsync(cancellationToken);
         public Task<MediaOperation?> GetAsync(Guid id, CancellationToken cancellationToken = default) =>

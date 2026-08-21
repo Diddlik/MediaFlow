@@ -23,18 +23,25 @@ fieldset { border: 1px solid #313847; border-radius: 10px; padding: 1rem; }
 legend { padding: 0 .4rem; color: #c9d1dc; }
 input, select, textarea, button { font: inherit; }
 input, select, textarea { width: 100%; background: #0d1118; color: #edf2f7; border: 1px solid #313847; border-radius: 8px; padding: .7rem .75rem; }
+input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 textarea { resize: vertical; }
-button { border: 1px solid #44516a; background: #27344d; color: #fff; border-radius: 8px; padding: .65rem .9rem; cursor: pointer; }
+button, .button-link { border: 1px solid #44516a; background: #27344d; color: #fff; border-radius: 8px; padding: .65rem .9rem; cursor: pointer; text-decoration: none; }
 button:hover { filter: brightness(1.08); }
 button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
 button.secondary { background: transparent; }
+.button-link.secondary { background: transparent; }
 button.danger { background: #3a2024; border-color: #69353b; }
 button.good { background: #183928; border-color: #2e6a48; }
 form { display: grid; gap: 1rem; }
 .empty { padding: 1rem; color: #9ba5b4; border: 1px dashed #303746; border-radius: 10px; }
 .message { min-height: 1.25rem; color: #b9c6d8; }
+.setup-steps { display: grid; gap: .65rem; padding: 0; list-style: none; }
+.setup-steps li { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .75rem; padding: .75rem; border: 1px solid #303746; border-radius: 10px; }
+.setup-steps li > span:first-child { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border: 1px solid #53617a; border-radius: 50%; }
+.setup-steps li.complete { border-color: #2e6a48; }
 .hidden { display: none !important; }
 .route-path { display: block; margin-top: .45rem; }
+.changelog { max-height: 24rem; overflow: auto; white-space: pre-wrap; background: #0d1118; border: 1px solid #313847; border-radius: 8px; padding: 1rem; }
 .state.Matched, .state.Completed { border-color: #2e6a48; color: #bfe5ce; }
 .state.Ambiguous, .state.Quarantined, .state.RetryPending { border-color: #8a6330; color: #f0d2a5; }
 .state.Unmatched, .state.Ignored { border-color: #515968; color: #b9c1cd; }

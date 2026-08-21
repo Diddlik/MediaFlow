@@ -62,6 +62,15 @@ git push origin v0.6.0
 
 Prefer deploying versioned tags instead of `latest` in installations where deterministic rollback matters.
 
+The example Compose file accepts a pinned image through `MEDIAFLOW_IMAGE`:
+
+```powershell
+$env:MEDIAFLOW_IMAGE = "ghcr.io/diddlik/mediaflow:1.0.0"
+docker compose pull mediaflow
+docker compose up -d --no-deps mediaflow
+docker compose ps mediaflow
+```
+
 If an upgrade fails:
 
 1. stop MediaFlow;

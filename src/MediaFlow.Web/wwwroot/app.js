@@ -5,6 +5,7 @@ let shares = [];
 let groups = [];
 let events = [];
 let operations = [];
+let quarantinedOperations = [];
 
 async function request(url, options = {}) {
   const response = await fetch(url, {
@@ -24,13 +25,14 @@ async function request(url, options = {}) {
 
 async function load() {
   try {
-    const [info, presetData, shareData, groupData, eventData, operationData] = await Promise.all([
+    const [info, presetData, shareData, groupData, eventData, operationData, quarantineData] = await Promise.all([
       request('/api/v1/info'),
       request('/api/v1/share-presets'),
       request('/api/v1/shares'),
       request('/api/v1/source-groups/'),
       request('/api/v1/events/'),
-      request('/api/v1/operations?limit=50')
+      request('/api/v1/operations?limit=50'),
+      request('/api/v1/quarantine?limit=200')
     ]);
     appInfo = info;
     presets = presetData;
@@ -38,6 +40,7 @@ async function load() {
     groups = groupData;
     events = eventData;
     operations = operationData;
+    quarantinedOperations = quarantineData;
     $('status').textContent = appInfo.dryRun ? 'Dry run enabled' : 'Live mode';
     renderAll();
   } catch (error) {
@@ -47,6 +50,7 @@ async function load() {
 }
 
 function renderAll() {
+  renderOnboarding();
   renderPresets();
   renderShares();
   renderGroupChoices();
@@ -55,6 +59,7 @@ function renderAll() {
   renderEvents();
   renderRoutingSources();
   renderOperations();
+  renderQuarantine();
 }
 
 function renderPresets() {
@@ -201,6 +206,80 @@ function renderOperations() {
     </article>
   `).join('');
 }
+
+function renderOnboarding() {
+  const panel = $('onboardingPanel');
+  const configured = shares.length > 0 && groups.length > 0 && events.length > 0;
+  const dismissed = localStorage.getItem('mediaflow.onboarding.dismissed') === 'true';
+  panel.classList.toggle('hidden', configured || dismissed);
+  if (configured || dismissed) return;
+
+  const steps = [
+    ['Review safety settings', true, "document.getElementById('settingsForm').scrollIntoView({behavior:'smooth'})"],
+    ['Add source and destination shares', shares.length > 0, "document.getElementById('newShare').click()"],
+    ['Create a source group', groups.length > 0, "document.getElementById('newGroup').click()"],
+    ['Create and start an event', events.length > 0, "document.getElementById('newEvent').click()"]
+  ];
+  $('onboardingSteps').innerHTML = steps.map(([label, done, action], index) => `
+    <li class="${done ? 'complete' : ''}">
+      <span>${done ? '✓' : index + 1}</span>
+      <strong>${escapeHtml(label)}</strong>
+      ${done ? '<span class="meta">Complete</span>' : `<button type="button" onclick="${action}">Open</button>`}
+    </li>
+  `).join('');
+}
+
+function renderQuarantine() {
+  const list = $('quarantineList');
+  if (!quarantinedOperations.length) {
+    list.innerHTML = '<div class="empty">No quarantined operations.</div>';
+    return;
+  }
+
+  list.innerHTML = quarantinedOperations.map(operation => `
+    <article class="item-card">
+      <div>
+        <div class="item-heading">
+          <strong>Safety review required</strong>
+          <span class="state Quarantined">Quarantined</span>
+        </div>
+        <code>${escapeHtml(operation.sourcePath)}</code>
+        ${operation.destinationPath ? `<code class="route-path">→ ${escapeHtml(operation.destinationPath)}</code>` : ''}
+        <div class="meta">${escapeHtml(operation.lastError || 'No reason recorded.')}</div>
+      </div>
+      <div class="card-actions">
+        <button type="button" class="good" ${appInfo.dryRun ? 'disabled title="Dry Run is enabled"' : ''} onclick="retryQuarantine('${operation.id}')">Retry</button>
+        <button type="button" class="secondary" onclick="dismissQuarantine('${operation.id}')">Dismiss safely</button>
+      </div>
+    </article>
+  `).join('');
+}
+
+window.dismissQuarantine = async function(id) {
+  const resolutionNote = prompt('Describe how this quarantined operation was resolved. The source file will not be deleted.');
+  if (resolutionNote === null) return;
+  try {
+    await request(`/api/v1/quarantine/${id}/dismiss`, {
+      method: 'POST',
+      body: JSON.stringify({ resolutionNote })
+    });
+    $('quarantineMessage').textContent = 'Quarantine item dismissed. Source preserved.';
+    await Promise.all([refreshQuarantine(), refreshOperations()]);
+  } catch (error) {
+    $('quarantineMessage').textContent = error.message;
+  }
+};
+
+window.retryQuarantine = async function(id) {
+  if (!confirm('Retry this quarantined transfer from the preserved source file?')) return;
+  try {
+    await request(`/api/v1/operations/${id}/retry`, { method: 'POST' });
+    $('quarantineMessage').textContent = 'Quarantined transfer retried.';
+    await Promise.all([refreshQuarantine(), refreshOperations()]);
+  } catch (error) {
+    $('quarantineMessage').textContent = error.message;
+  }
+};
 
 window.probeShare = async function(id) {
   const state = $(`state-${id}`);
@@ -404,6 +483,11 @@ async function refreshOperations() {
   renderOperations();
 }
 
+async function refreshQuarantine() {
+  quarantinedOperations = await request('/api/v1/quarantine?limit=200');
+  renderQuarantine();
+}
+
 async function reloadConfiguration() {
   [shares, groups, events] = await Promise.all([
     request('/api/v1/shares'),
@@ -416,11 +500,13 @@ async function reloadConfiguration() {
   renderEventSelectors();
   renderEvents();
   renderRoutingSources();
+  renderOnboarding();
 }
 
 async function reloadEvents() {
   events = await request('/api/v1/events/');
   renderEvents();
+  renderOnboarding();
 }
 
 function applyPreset() {
@@ -556,6 +642,11 @@ $('newEvent').addEventListener('click', () => { resetEventForm(); showPanel('eve
 $('cancelEvent').addEventListener('click', () => hidePanel('eventFormPanel'));
 $('previewRouting').addEventListener('click', previewRouting);
 $('refreshOperations').addEventListener('click', refreshOperations);
+$('refreshQuarantine').addEventListener('click', refreshQuarantine);
+$('dismissOnboarding').addEventListener('click', () => {
+  localStorage.setItem('mediaflow.onboarding.dismissed', 'true');
+  renderOnboarding();
+});
 
 function showPanel(id) {
   $(id).classList.remove('hidden');

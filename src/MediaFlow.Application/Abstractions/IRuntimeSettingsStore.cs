@@ -5,7 +5,9 @@ public sealed record MediaFlowRuntimeSettings(
     bool AutomationEnabled = true,
     int ReconciliationIntervalSeconds = 300,
     int MaxFilesPerSharePerCycle = 200,
-    bool AllowFilesystemTimestampFallback = false);
+    bool AllowFilesystemTimestampFallback = false,
+    long MinimumFreeSpaceReserveBytes = 512L * 1024L * 1024L,
+    bool AutomaticImageUpdatesEnabled = false);
 
 public interface IRuntimeSettingsStore
 {
