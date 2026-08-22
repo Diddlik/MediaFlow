@@ -55,6 +55,29 @@ function baseName(path) {
   return parts[parts.length - 1] || String(path ?? '');
 }
 
+function safeSegment(value) {
+  const cleaned = String(value ?? '').trim().replace(/[\/:*?"<>|]/g, '_');
+  return cleaned || 'unnamed';
+}
+
+// Mirrors DestinationPathResolver: {source} and {owner} stay literal because they
+// depend on the source share of each individual file.
+function destinationFolder(event) {
+  const captured = new Date(event.startAt);
+  const valid = !Number.isNaN(captured.getTime());
+  const pad = (number, size) => String(number).padStart(size, '0');
+  return String(event.destinationFolderTemplate ?? '')
+    .replace(/\{event\.name\}/gi, () => safeSegment(event.name))
+    .replace(/\{event\.type\}/gi, () => safeSegment(event.type || 'Event'))
+    .replace(/\{year\}/gi, valid ? pad(captured.getFullYear(), 4) : '{year}')
+    .replace(/\{month\}/gi, valid ? pad(captured.getMonth() + 1, 2) : '{month}')
+    .replace(/\{day\}/gi, valid ? pad(captured.getDate(), 2) : '{day}');
+}
+
+function destinationPathFor(event, destination) {
+  return `${destination ? destination.path : 'destination'}/${destinationFolder(event)}`;
+}
+
 function formatDate(value) {
   if (!value) return 'unknown';
   const date = new Date(value);
@@ -260,7 +283,7 @@ function renderRunningEvent() {
 
   const groupName = groups.find(x => x.id === event.sourceGroupId)?.name || 'unknown group';
   const destination = shares.find(x => x.id === event.destinationShareId);
-  const destinationPath = `${destination ? destination.path : 'destination'}/${event.destinationFolderTemplate}`;
+  const destinationPath = destinationPathFor(event, destination);
   const window_ = `${formatDate(event.startAt)} → ${event.endAt ? formatDate(event.endAt) : 'open'}`;
   const mode = event.operationMode === 'Copy' ? 'Copy' : 'Safe Move';
   const dry = appInfo.dryRun !== false;
@@ -462,7 +485,7 @@ function renderSetup() {
     {
       name: 'Destination path looks right',
       detail: sampleEvent && destination
-        ? `${destination.path}/${sampleEvent.destinationFolderTemplate}`
+        ? destinationPathFor(sampleEvent, destination)
         : 'No event and destination pair configured yet.',
       ok: Boolean(sampleEvent && destination),
       mono: true
@@ -621,7 +644,7 @@ function renderEvents() {
             ${eventStatusPill(event.status)}
           </div>
           <div class="list-meta" style="margin-bottom:5px">${escapeHtml(range)} · ${escapeHtml(groupName)} · ${mode}</div>
-          <div class="list-path">${escapeHtml(destination ? destination.path : 'destination')}/${escapeHtml(event.destinationFolderTemplate)}</div>
+          <div class="list-path">${escapeHtml(destinationPathFor(event, destination))}</div>
         </div>
         <div class="list-side">
           ${routed ? `<div class="list-count">${formatNumber(routed)}</div><div class="list-meta" style="margin-bottom:10px">files routed</div>` : ''}
@@ -776,7 +799,7 @@ window.scanShare = async function (id) {
   const state = $(`state-${id}`);
   state.textContent = 'Scanning…';
   try {
-    const result = await request(`/api/v1/shares/${id}/scan?limit=500`);
+    const result = await request(`/api/v1/shares/${id}/scan?limit=1`);
     state.textContent = `${result.total} media files · ${result.stable} stable · ${result.waitingStable} waiting`;
   } catch (error) {
     state.textContent = `Scan failed · ${error.message}`;

@@ -236,15 +236,28 @@ app.MapGet("/api/v1/shares/{id:guid}/scan", async (
 
     try
     {
-        var files = discovery.Scan(share, Math.Clamp(limit ?? 200, 1, 2000));
+        var sampleSize = Math.Clamp(limit ?? 200, 1, 2000);
+        var files = new List<DiscoveredFile>(sampleSize);
+        var total = 0;
+        var stable = 0;
+
+        // Count the whole share, but only return the first sampleSize files.
+        foreach (var file in discovery.Enumerate(share))
+        {
+            total++;
+            if (file.State == DiscoveryState.Stable) stable++;
+            if (files.Count < sampleSize) files.Add(file);
+        }
+
         return Results.Ok(new
         {
             share.Id,
             share.Name,
             share.Path,
-            total = files.Count,
-            stable = files.Count(x => x.State == DiscoveryState.Stable),
-            waitingStable = files.Count(x => x.State == DiscoveryState.WaitingStable),
+            total,
+            stable,
+            waitingStable = total - stable,
+            sampled = files.Count,
             files
         });
     }

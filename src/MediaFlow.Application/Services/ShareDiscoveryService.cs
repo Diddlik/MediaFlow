@@ -21,22 +21,20 @@ public sealed class ShareDiscoveryService(IFileSystemGateway fileSystem, IClock 
     };
 
     public IReadOnlyList<DiscoveredFile> Scan(Share share, int limit = 500)
+        => Enumerate(share).Take(limit).ToList();
+
+    /// <summary>Lazily walks the share so callers can either sample it or count all of it.</summary>
+    public IEnumerable<DiscoveredFile> Enumerate(Share share)
     {
         if (!share.Enabled || share.Role == ShareRole.Destination || !fileSystem.DirectoryExists(share.Path))
         {
-            return Array.Empty<DiscoveredFile>();
+            yield break;
         }
 
         var now = clock.UtcNow;
-        var result = new List<DiscoveredFile>();
 
         foreach (var path in fileSystem.EnumerateFiles(share.Path, share.Recursive))
         {
-            if (result.Count >= limit)
-            {
-                break;
-            }
-
             var relativePath = Path.GetRelativePath(share.Path, path).Replace('\\', '/');
             if (IsIgnored(relativePath, share.IgnorePatterns))
             {
@@ -71,17 +69,15 @@ public sealed class ShareDiscoveryService(IFileSystemGateway fileSystem, IClock 
 
             var stable = now - observation.UnchangedSince >= TimeSpan.FromSeconds(share.StabilitySeconds);
 
-            result.Add(new DiscoveredFile(
+            yield return new DiscoveredFile(
                 path,
                 relativePath,
                 mediaType,
                 size,
                 lastWrite,
                 observation.UnchangedSince,
-                stable ? DiscoveryState.Stable : DiscoveryState.WaitingStable));
+                stable ? DiscoveryState.Stable : DiscoveryState.WaitingStable);
         }
-
-        return result;
     }
 
     private static MediaType GetMediaType(string path)
