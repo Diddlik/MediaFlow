@@ -6,6 +6,12 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.1.0] - 2026-08-22
+
+### Changed
+
+- the project is rebranded from MediaFlow to MomentFerry: solution/project/namespace names, `MediaFlow__*` configuration keys become `MomentFerry__*`, the container image moves to `ghcr.io/diddlik/momentferry`, and the default SQLite database filename becomes `momentferry.db`. Existing deployments must update their compose environment variables and rename the database file; see [RELEASING.md](docs/RELEASING.md) and [BACKUP-RESTORE.md](docs/BACKUP-RESTORE.md).
+
 ## [1.0.5] - 2026-08-22
 
 ### Fixed
