@@ -1,6 +1,7 @@
 using MomentFerry.Application.Abstractions;
 using MomentFerry.Application.Services;
 using MomentFerry.Core.Domain;
+using MomentFerry.Web.Background;
 
 namespace MomentFerry.Web.Api;
 
@@ -24,6 +25,8 @@ public static class EventEndpoints
             IMediaEventRepository repository,
             ISourceGroupRepository sourceGroups,
             IShareRepository shares,
+            EventControlService control,
+            AutomationWakeSignal wakeSignal,
             CancellationToken ct) =>
         {
             var validation = await ValidateAsync(request, sourceGroups, shares, ct);
@@ -31,6 +34,7 @@ public static class EventEndpoints
 
             var mediaEvent = ToDomain(Guid.NewGuid(), request);
             await repository.UpsertAsync(mediaEvent, ct);
+            await RequeueAndWakeAsync(control, wakeSignal, ct, mediaEvent);
             return Results.Created($"/api/v1/events/{mediaEvent.Id}", mediaEvent);
         });
 
@@ -40,14 +44,18 @@ public static class EventEndpoints
             IMediaEventRepository repository,
             ISourceGroupRepository sourceGroups,
             IShareRepository shares,
+            EventControlService control,
+            AutomationWakeSignal wakeSignal,
             CancellationToken ct) =>
         {
-            if (await repository.GetAsync(id, ct) is null) return Results.NotFound();
+            if (await repository.GetAsync(id, ct) is not { } previous) return Results.NotFound();
             var validation = await ValidateAsync(request, sourceGroups, shares, ct);
             if (validation is not null) return validation;
 
             var mediaEvent = ToDomain(id, request);
             await repository.UpsertAsync(mediaEvent, ct);
+            // Both windows are requeued: files leaving the old window must stop matching it.
+            await RequeueAndWakeAsync(control, wakeSignal, ct, previous, mediaEvent);
             return Results.Ok(mediaEvent);
         });
 
@@ -83,10 +91,35 @@ public static class EventEndpoints
             CancellationToken ct) =>
             ToResult(await control.QuickStopAsync(request.Name, ct)));
 
-        group.MapDelete("/{id:guid}", async (Guid id, IMediaEventRepository repository, CancellationToken ct) =>
-            await repository.DeleteAsync(id, ct) ? Results.NoContent() : Results.NotFound());
+        group.MapDelete("/{id:guid}", async (
+            Guid id,
+            IMediaEventRepository repository,
+            EventControlService control,
+            AutomationWakeSignal wakeSignal,
+            CancellationToken ct) =>
+        {
+            if (await repository.GetAsync(id, ct) is not { } existing) return Results.NotFound();
+            if (!await repository.DeleteAsync(id, ct)) return Results.NotFound();
+
+            await RequeueAndWakeAsync(control, wakeSignal, ct, existing);
+            return Results.NoContent();
+        });
 
         return app;
+    }
+
+    private static async Task RequeueAndWakeAsync(
+        EventControlService control,
+        AutomationWakeSignal wakeSignal,
+        CancellationToken cancellationToken,
+        params MediaEvent[] affected)
+    {
+        foreach (var mediaEvent in affected)
+        {
+            await control.RequeueAffectedMediaAsync(mediaEvent, cancellationToken);
+        }
+
+        wakeSignal.Wake();
     }
 
     private static IResult ToResult(EventControlResult result) => result.Status switch

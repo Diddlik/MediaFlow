@@ -5,6 +5,9 @@ namespace MomentFerry.Infrastructure.Persistence;
 
 public sealed class SqliteMediaFileRepository(SqliteConnectionFactory connectionFactory) : IMediaFileRepository
 {
+    /// <summary>Sentinel last-seen value that sorts requeued files alongside never-indexed ones.</summary>
+    private static readonly string RequeuedMarker = DateTimeOffset.MinValue.UtcDateTime.ToString("O");
+
     private const string SelectColumns = "id, source_share_id, source_path, original_name, size, extension, media_type, captured_at_utc, timestamp_source, timezone_inferred, sha256, source_last_write_at_utc, first_seen_at_utc, last_seen_at_utc";
 
     public async Task<IReadOnlyList<MediaFile>> ListRecentAsync(int limit = 200, CancellationToken cancellationToken = default)
@@ -105,6 +108,42 @@ public sealed class SqliteMediaFileRepository(SqliteConnectionFactory connection
         command.Parameters.AddWithValue("$firstSeen", mediaFile.FirstSeenAt.UtcDateTime.ToString("O"));
         command.Parameters.AddWithValue("$lastSeen", mediaFile.LastSeenAt.UtcDateTime.ToString("O"));
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    public async Task<int> RequeueByCaptureWindowAsync(
+        IReadOnlyCollection<Guid> sourceShareIds,
+        DateTimeOffset startAt,
+        DateTimeOffset? endAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (sourceShareIds.Count == 0) return 0;
+
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+
+        var shareParameters = new List<string>(sourceShareIds.Count);
+        var shareIndex = 0;
+        foreach (var shareId in sourceShareIds)
+        {
+            var name = $"$share{shareIndex++}";
+            shareParameters.Add(name);
+            command.Parameters.AddWithValue(name, shareId.ToString("D"));
+        }
+
+        // Capture windows are inclusive on both ends, mirroring IMediaEventRepository.ListMatchableAsync.
+        command.CommandText = $"""
+            UPDATE media_files
+            SET last_seen_at_utc = $requeued
+            WHERE source_share_id IN ({string.Join(", ", shareParameters)})
+              AND captured_at_utc IS NOT NULL
+              AND captured_at_utc >= $start
+              AND ($end IS NULL OR captured_at_utc <= $end)
+              AND last_seen_at_utc > $requeued;
+            """;
+        command.Parameters.AddWithValue("$requeued", RequeuedMarker);
+        command.Parameters.AddWithValue("$start", startAt.UtcDateTime.ToString("O"));
+        command.Parameters.AddWithValue("$end", endAt is null ? DBNull.Value : endAt.Value.UtcDateTime.ToString("O"));
+        return await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static MediaFile Read(Microsoft.Data.Sqlite.SqliteDataReader reader) => new()

@@ -7,6 +7,7 @@ public sealed class EventControlService(
     IMediaEventRepository events,
     ISourceGroupRepository sourceGroups,
     IShareRepository shares,
+    IMediaFileRepository mediaFiles,
     IClock clock)
 {
     public async Task<EventControlResult> StartAsync(
@@ -113,6 +114,24 @@ public sealed class EventControlService(
         var stopped = Copy(matches[0], matches[0].StartAt, clock.UtcNow, MediaEventStatus.Closed);
         await events.UpsertAsync(stopped, cancellationToken);
         return EventControlResult.Success(stopped);
+    }
+
+    /// <summary>
+    /// Requeues indexed media inside the event's capture window so a newly created or edited event is
+    /// applied on the next automation cycle, instead of waiting for the least-recently-evaluated sweep.
+    /// </summary>
+    public async Task<int> RequeueAffectedMediaAsync(
+        MediaEvent mediaEvent,
+        CancellationToken cancellationToken = default)
+    {
+        var sourceGroup = await sourceGroups.GetAsync(mediaEvent.SourceGroupId, cancellationToken);
+        if (sourceGroup is null || sourceGroup.ShareIds.Count == 0) return 0;
+
+        return await mediaFiles.RequeueByCaptureWindowAsync(
+            sourceGroup.ShareIds,
+            mediaEvent.StartAt,
+            mediaEvent.EndAt,
+            cancellationToken);
     }
 
     private static MediaEvent Copy(

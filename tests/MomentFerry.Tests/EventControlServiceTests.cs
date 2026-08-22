@@ -63,7 +63,7 @@ public sealed class EventControlServiceTests
         var group = new SourceGroup { Name = "Loop", ShareIds = [both.Id] };
         var groups = new MemorySourceGroupRepository([group]);
         var events = new MemoryEventRepository();
-        var service = new EventControlService(events, groups, shares, clock);
+        var service = new EventControlService(events, groups, shares, new MemoryMediaFileRepository(), clock);
 
         var result = await service.QuickStartAsync(new QuickStartEventCommand(
             "Loop event",
@@ -97,7 +97,7 @@ public sealed class EventControlServiceTests
         };
         var groups = new MemorySourceGroupRepository([group]);
         var events = new MemoryEventRepository();
-        var service = new EventControlService(events, groups, shares, clock);
+        var service = new EventControlService(events, groups, shares, new MemoryMediaFileRepository(), clock);
         return new Fixture(service, events, group, destination, clock);
     }
 
@@ -111,6 +111,37 @@ public sealed class EventControlServiceTests
     private sealed class TestClock(DateTimeOffset now) : IClock
     {
         public DateTimeOffset UtcNow { get; } = now;
+    }
+
+    /// <summary>Records requeue windows so lifecycle tests can assert the re-match trigger fired.</summary>
+    private sealed class MemoryMediaFileRepository : IMediaFileRepository
+    {
+        public List<(IReadOnlyCollection<Guid> ShareIds, DateTimeOffset StartAt, DateTimeOffset? EndAt)> Requeues { get; } = [];
+
+        public Task<IReadOnlyList<MediaFile>> ListRecentAsync(int limit = 200, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<MediaFile>>([]);
+
+        public Task<IReadOnlyList<MediaFile>> ListBySourceAsync(Guid sourceShareId, CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<MediaFile>>([]);
+
+        public Task<MediaFile?> GetAsync(Guid id, CancellationToken cancellationToken = default)
+            => Task.FromResult<MediaFile?>(null);
+
+        public Task<MediaFile?> GetBySourceAsync(Guid sourceShareId, string sourcePath, CancellationToken cancellationToken = default)
+            => Task.FromResult<MediaFile?>(null);
+
+        public Task UpsertAsync(MediaFile mediaFile, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
+        public Task<int> RequeueByCaptureWindowAsync(
+            IReadOnlyCollection<Guid> sourceShareIds,
+            DateTimeOffset startAt,
+            DateTimeOffset? endAt,
+            CancellationToken cancellationToken = default)
+        {
+            Requeues.Add((sourceShareIds, startAt, endAt));
+            return Task.FromResult(0);
+        }
     }
 
     private sealed class MemoryEventRepository : IMediaEventRepository
