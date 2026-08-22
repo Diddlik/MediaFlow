@@ -24,6 +24,7 @@ const backgroundTasks = new Map();
 let taskClock = null;
 let scanRequestedAt = null;
 let scanScheduleError = '';
+let manualScanResult = null;
 
 const TITLES = {
   overview: ['Overview', 'Every watched folder, the running event and anything waiting on you.'],
@@ -419,7 +420,7 @@ function renderRunningEvent() {
         <div class="event-scan-time" id="nextScanCountdown"></div>
       </div>
       <button class="btn" type="button" data-scan-now ${scanDisabled ? 'disabled' : ''}>
-        ${scanRequestedAt ? 'Queued…' : cycleRunning ? 'Scanning…' : 'Scan now'}
+        ${cycleRunning ? 'Scanning…' : scanRequestedAt ? 'Queued…' : 'Scan now'}
       </button>
     </div>
     <div class="actions" style="margin-top:14px">
@@ -460,27 +461,79 @@ function renderNextScanCountdown() {
   const next = new Date(automationInfo.lastCycleCompletedAt).getTime()
     + Number(appInfo.reconciliationIntervalSeconds || 300) * 1000;
   const seconds = Math.max(0, Math.ceil((next - Date.now()) / 1000));
+  const result = manualScanResult
+    ? `Manual scan completed ${new Date(manualScanResult.completedAt).toLocaleTimeString()} · ${formatNumber(manualScanResult.matched)} matched · ${formatNumber(manualScanResult.wouldMove)} would move${manualScanResult.errors ? ` · ${formatNumber(manualScanResult.errors)} errors` : ''} · `
+    : '';
   if (!seconds) {
-    target.textContent = 'Next scan due now';
+    target.textContent = `${result}Next scan due now`;
     return;
   }
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor(seconds % 3600 / 60);
   const remainder = seconds % 60;
-  target.textContent = `Next scan in ${hours ? `${hours}:` : ''}${String(minutes).padStart(hours ? 2 : 1, '0')}:${String(remainder).padStart(2, '0')}`;
+  target.textContent = `${result}Next scan in ${hours ? `${hours}:` : ''}${String(minutes).padStart(hours ? 2 : 1, '0')}:${String(remainder).padStart(2, '0')}`;
   target.title = `Scheduled for ${new Date(next).toLocaleString()}`;
 }
 
 async function triggerScanNow() {
   if (automationInfo?.cycleRunning || scanRequestedAt || appInfo.automationEnabled === false) return;
   scanScheduleError = '';
+  manualScanResult = null;
+  scanRequestedAt = new Date().toISOString();
+  renderRunningEvent();
   try {
-    const result = await request('/api/v1/automation/run', { method: 'POST' });
-    scanRequestedAt = result.requestedAt;
+    await runBackgroundTask('manual-scan', 'Manual scan', 'overview', async () => {
+      const result = await request('/api/v1/automation/run', { method: 'POST' });
+      scanRequestedAt = result.requestedAt;
+      await monitorManualScan(result.requestedAt);
+    });
   } catch (error) {
+    scanRequestedAt = null;
     scanScheduleError = `Could not start scan · ${error.message}`;
   }
   renderRunningEvent();
+}
+
+async function monitorManualScan(requestedAt) {
+  const requested = new Date(requestedAt).getTime();
+  const deadline = Date.now() + 30 * 60 * 1000;
+
+  while (Date.now() < deadline) {
+    const status = await request('/api/v1/status', { cache: 'no-store' });
+    automationInfo = status.automation;
+    appInfo.automationEnabled = status.automationEnabled;
+    appInfo.reconciliationIntervalSeconds = status.reconciliationIntervalSeconds;
+
+    const task = backgroundTasks.get('manual-scan');
+    if (task) {
+      const total = automationInfo.currentTotal || 0;
+      const processed = automationInfo.currentProcessed || 0;
+      const percent = total ? Math.min(100, Math.round(processed / total * 100)) : 0;
+      task.detail = automationInfo.cycleRunning
+        ? `${automationInfo.currentPhase || 'Scanning'} · ${total ? `${formatNumber(processed)} / ${formatNumber(total)} · ${percent}%` : 'starting…'}`
+        : 'Queued';
+      renderBackgroundTasks();
+    }
+
+    const completed = new Date(automationInfo.lastCycleCompletedAt || 0).getTime();
+    if (!automationInfo.cycleRunning && completed >= requested) {
+      manualScanResult = {
+        completedAt: automationInfo.lastCycleCompletedAt,
+        matched: automationInfo.lastMatched || 0,
+        wouldMove: automationInfo.lastWouldMove || 0,
+        errors: automationInfo.lastErrors || 0
+      };
+      scanRequestedAt = null;
+      scanScheduleError = '';
+      renderOverview();
+      return;
+    }
+
+    renderOverview();
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+
+  throw new Error('Timed out waiting for the scan to finish');
 }
 
 function renderStorage() {

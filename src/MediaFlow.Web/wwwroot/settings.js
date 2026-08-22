@@ -178,11 +178,6 @@ async function loadAutomationStatus() {
     ]);
 
     automationInfo = result.automation;
-    if (scanRequestedAt && automationInfo.lastCycleStartedAt &&
-        new Date(automationInfo.lastCycleStartedAt) >= new Date(scanRequestedAt)) {
-      scanRequestedAt = null;
-      scanScheduleError = '';
-    }
     storageInfo = storage;
 
     const automation = result.automation;
