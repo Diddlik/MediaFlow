@@ -41,6 +41,9 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 - stable image update checks, changelog display, opt-in automatic updates and confirmed manual update triggering through an isolated Watchtower companion.
 - release-tag version injection and persisted healthy-restart/update-failure reporting.
 - deterministic Compose image pinning and an operator-triggered rollback runbook without adding another Docker-socket service.
+- mounted-folder browser for Share paths, backed by `GET /api/v1/folders`.
+- sidebar Web UI with one view per task, an overview of the running event, destination headroom and held files, a light theme and a phone layout.
+- first-run setup wizard and a typed confirmation dialog for leaving Dry Run.
 
 ### Changed
 

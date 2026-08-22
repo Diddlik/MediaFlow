@@ -93,6 +93,8 @@ Open `http://<server>:8080`.
 
 The `data` volume contains the SQLite database and persistent runtime settings. Docker environment values act as initial defaults; settings saved in the Web UI are stored in `data/runtime-settings.json` and take precedence for runtime automation values.
 
+When adding a share, use the mounted-folder browser instead of entering a container path manually. Source shares are selected below `/sources`, destination shares below `/destinations`. Folders can be expanded to select any nested directory, so a single root mount can provide several independently configured shares.
+
 ## Recommended first setup
 
 1. Keep **Dry Run** enabled.
@@ -115,6 +117,7 @@ GET  /api/v1/status
 GET  /api/v1/storage
 GET  /api/v1/settings
 PUT  /api/v1/settings
+GET  /api/v1/folders?role=Source
 GET  /api/v1/shares
 GET  /api/v1/events/
 POST /api/v1/events/{id}/start

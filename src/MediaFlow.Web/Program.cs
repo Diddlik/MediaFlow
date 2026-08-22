@@ -62,8 +62,10 @@ builder.Services.AddSingleton<ImageUpdateService>();
 builder.Services.AddHostedService<ImageUpdateWorker>();
 
 var databasePath = builder.Configuration["MediaFlow:Database:Path"] ?? "data/mediaflow.db";
+var sourceRoots = builder.Configuration.GetSection("MediaFlow:SourceRoots").Get<string[]>() ?? ["/sources"];
+var destinationRoots = builder.Configuration.GetSection("MediaFlow:DestinationRoots").Get<string[]>() ?? ["/destinations"];
 var allowedRoots = builder.Configuration.GetSection("MediaFlow:AllowedRoots").Get<string[]>()
-    ?? ["/sources", "/destinations"];
+    ?? sourceRoots.Concat(destinationRoots).Distinct().ToArray();
 
 builder.Services.AddSingleton(new SqliteConnectionFactory(databasePath));
 builder.Services.AddSingleton<IDatabaseInitializer, SqliteDatabaseInitializer>();
@@ -129,6 +131,52 @@ app.MapGet("/api/v1/info", async (
 });
 
 app.MapGet("/api/v1/share-presets", () => Results.Ok(SharePresets.All));
+
+app.MapGet("/api/v1/folders", (ShareRole role, string? path) =>
+{
+    var roots = role switch
+    {
+        ShareRole.Source => sourceRoots,
+        ShareRole.Destination => destinationRoots,
+        _ => sourceRoots.Concat(destinationRoots).Distinct().ToArray()
+    };
+
+    try
+    {
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            return Results.Ok(new
+            {
+                path = Path.GetFullPath(path),
+                folders = FolderBrowser.ListChildren(path, roots)
+            });
+        }
+
+        return Results.Ok(new
+        {
+            roots = roots
+                .Where(Directory.Exists)
+                .Select(root => new
+                {
+                    name = Path.GetFileName(Path.TrimEndingDirectorySeparator(root)),
+                    path = Path.GetFullPath(root),
+                    folders = FolderBrowser.ListChildren(root, roots)
+                })
+                .ToArray()
+        });
+    }
+    catch (ArgumentException exception)
+    {
+        return Results.BadRequest(new { error = exception.Message });
+    }
+    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+    {
+        return Results.Problem(
+            title: "Folder browsing failed",
+            detail: exception.Message,
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+});
 
 app.MapGet("/api/v1/shares", async (IShareRepository repository, CancellationToken ct) =>
     Results.Ok(await repository.ListAsync(ct)));

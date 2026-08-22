@@ -1,5 +1,11 @@
-const settingsById = (id) => document.getElementById(id);
+/* MediaFlow Console — runtime settings, automation status, storage, updates.
+   Depends on globals declared in app.js: appInfo, automationInfo, storageInfo,
+   updateInfo, $(), request-style helpers, formatBytes(), and the renderers.
+--------------------------------------------------------------------------- */
+
 let currentRuntimeSettings = null;
+const LIVE_CONFIRMATION = 'ENABLE_LIVE_TRANSFERS';
+const LIVE_PHRASE = 'ENABLE LIVE';
 
 async function settingsRequest(url, options = {}) {
   const response = await fetch(url, {
@@ -19,29 +25,62 @@ async function settingsRequest(url, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
+/* Form <-> settings ------------------------------------------------------- */
+
 function applySettingsToForm(settings) {
   currentRuntimeSettings = settings;
-  settingsById('settingsDryRun').checked = settings.dryRun;
-  settingsById('settingsAutomationEnabled').checked = settings.automationEnabled;
-  settingsById('settingsInterval').value = settings.reconciliationIntervalSeconds;
-  settingsById('settingsMaxFiles').value = settings.maxFilesPerSharePerCycle;
-  settingsById('settingsTimestampFallback').checked = settings.allowFilesystemTimestampFallback;
-  settingsById('settingsFreeSpaceReserve').value = Math.round(settings.minimumFreeSpaceReserveBytes / 1048576);
-  settingsById('settingsAutomaticImageUpdates').checked = settings.automaticImageUpdatesEnabled;
-  updateModeBadge(settings);
+  $('settingsDryRun').checked = settings.dryRun;
+  $('settingsAutomationEnabled').checked = settings.automationEnabled;
+  $('settingsInterval').value = settings.reconciliationIntervalSeconds;
+  $('settingsMaxFiles').value = settings.maxFilesPerSharePerCycle;
+  $('settingsTimestampFallback').checked = settings.allowFilesystemTimestampFallback;
+  $('settingsFreeSpaceReserve').value = Math.round(settings.minimumFreeSpaceReserveBytes / 1048576);
+  $('settingsAutomaticImageUpdates').checked = settings.automaticImageUpdatesEnabled;
 
-  if (typeof appInfo !== 'undefined') {
-    appInfo = { ...appInfo, ...settings };
-  }
+  appInfo = { ...appInfo, ...settings };
+  renderMode();
+  renderOnboarding();
+  renderOverview();
+  if (!$('view-setup').classList.contains('hidden')) renderSetup();
 }
 
-function updateModeBadge(settings) {
-  const badge = settingsById('status');
-  if (!badge) return;
-  if (settings.dryRun) {
-    badge.textContent = settings.automationEnabled ? 'Dry run enabled' : 'Automation disabled';
-  } else {
-    badge.textContent = settings.automationEnabled ? 'LIVE MODE' : 'Live mode · automation disabled';
+function settingsFromForm(overrides = {}) {
+  return {
+    dryRun: $('settingsDryRun').checked,
+    automationEnabled: $('settingsAutomationEnabled').checked,
+    reconciliationIntervalSeconds: Number($('settingsInterval').value),
+    maxFilesPerSharePerCycle: Number($('settingsMaxFiles').value),
+    allowFilesystemTimestampFallback: $('settingsTimestampFallback').checked,
+    minimumFreeSpaceReserveBytes: Number($('settingsFreeSpaceReserve').value) * 1048576,
+    automaticImageUpdatesEnabled: $('settingsAutomaticImageUpdates').checked,
+    liveModeConfirmation: null,
+    ...overrides
+  };
+}
+
+async function saveSettings(overrides, messageTarget) {
+  const target = messageTarget ? $(messageTarget) : null;
+  try {
+    const updated = await settingsRequest('/api/v1/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settingsFromForm(overrides))
+    });
+    applySettingsToForm(updated);
+    if (target) {
+      target.className = 'message ok';
+      target.textContent = updated.dryRun
+        ? 'Saved. Media operations remain non-destructive.'
+        : 'Saved. LIVE transfers are enabled.';
+    }
+    await loadAutomationStatus();
+    return updated;
+  } catch (error) {
+    if (target) {
+      target.className = 'message error';
+      target.textContent = error.message;
+    }
+    await loadRuntimeSettings();
+    throw error;
   }
 }
 
@@ -49,150 +88,214 @@ async function loadRuntimeSettings() {
   try {
     const settings = await settingsRequest('/api/v1/settings');
     applySettingsToForm(settings);
-    settingsById('settingsMessage').textContent = '';
+    $('settingsMessage').textContent = '';
+    $('settingsMessage').className = 'message';
   } catch (error) {
-    settingsById('settingsMessage').textContent = `Settings failed: ${error.message}`;
+    $('settingsMessage').className = 'message error';
+    $('settingsMessage').textContent = `Settings failed: ${error.message}`;
   }
 }
 
+/* Leave Dry Run modal ------------------------------------------------------ */
+
+function openLiveModal() {
+  const matched = automationInfo ? automationInfo.lastMatched : 0;
+  const held = quarantinedOperations.length;
+  const safeMove = events.some(x => x.status === 'Active' && x.operationMode !== 'Copy');
+
+  $('liveModalFacts').innerHTML = `
+    <div class="kicker" style="margin-bottom:9px">This will affect</div>
+    <div class="modal-fact"><span>Files matched by the last scan</span><b>${matched.toLocaleString()}</b></div>
+    ${safeMove ? `<div class="modal-fact"><span>Originals deleted after verifying</span><b>${matched.toLocaleString()}</b></div>` : ''}
+    <div class="modal-fact"><span>Held for review, untouched</span><b class="amb">${held.toLocaleString()}</b></div>`;
+
+  $('liveModalToken').value = '';
+  $('liveModalConfirm').disabled = true;
+  $('liveModalMessage').textContent = '';
+  $('liveModal').classList.remove('hidden');
+  $('liveModalToken').focus();
+}
+
+function closeLiveModal() {
+  $('liveModal').classList.add('hidden');
+  $('settingsDryRun').checked = currentRuntimeSettings ? currentRuntimeSettings.dryRun : true;
+}
+
+$('liveModalToken').addEventListener('input', event => {
+  $('liveModalConfirm').disabled = event.target.value.trim().toUpperCase() !== LIVE_PHRASE;
+});
+
+$('liveModalCancel').addEventListener('click', closeLiveModal);
+$('liveModal').addEventListener('click', event => {
+  if (event.target === $('liveModal')) closeLiveModal();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !$('liveModal').classList.contains('hidden')) closeLiveModal();
+});
+
+$('liveModalConfirm').addEventListener('click', async () => {
+  $('liveModalConfirm').disabled = true;
+  try {
+    await saveSettings({ dryRun: false, liveModeConfirmation: LIVE_CONFIRMATION });
+    $('liveModal').classList.add('hidden');
+  } catch (error) {
+    $('liveModalMessage').className = 'message error';
+    $('liveModalMessage').textContent = error.message;
+    $('liveModal').classList.remove('hidden');
+    $('liveModalConfirm').disabled = false;
+  }
+});
+
+async function backToDryRun() {
+  $('settingsDryRun').checked = true;
+  await saveSettings({ dryRun: true }, 'settingsMessage');
+}
+
+$('modeAction').addEventListener('click', () => {
+  if (appInfo.dryRun === false) backToDryRun(); else openLiveModal();
+});
+
+$('setupEnableLive').addEventListener('click', openLiveModal);
+
+/* The Dry Run switch acts immediately — it is the one safety-critical toggle. */
+$('settingsDryRun').addEventListener('change', event => {
+  if (event.target.checked) backToDryRun();
+  else openLiveModal();
+});
+
+/* Automation status + storage ---------------------------------------------- */
+
 async function loadAutomationStatus() {
-  const target = settingsById('automationStatus');
+  const target = $('automationStatus');
   try {
     const [result, storage] = await Promise.all([
       settingsRequest('/api/v1/status'),
       settingsRequest('/api/v1/storage')
     ]);
+
+    automationInfo = result.automation;
+    storageInfo = storage;
+
     const automation = result.automation;
-    const mode = result.mode === 'live' ? 'LIVE' : 'Dry Run';
-    const enabled = result.automationEnabled ? 'automation enabled' : 'automation disabled';
-    const storageText = formatStorageStatus(storage);
+    const mode = result.mode === 'live' ? 'Live' : 'Dry Run';
+    const enabled = result.automationEnabled ? 'Automation running' : 'Automation off';
+    const healthy = result.automationEnabled && !automation.lastError;
+    $('automationDot').className = `dot ${healthy ? 'dot-acc' : (automation.lastError ? 'dot-red' : 'dot-amb')}`;
 
     if (!automation.lastCycleStartedAt) {
-      target.textContent = `${mode} · ${enabled} · no automation cycle recorded yet · ${storageText}`;
-      return;
+      target.textContent = `${enabled} · ${mode} · no cycle recorded yet · ${formatStorageStatus(storage)}`;
+    } else {
+      const completed = automation.lastCycleCompletedAt
+        ? new Date(automation.lastCycleCompletedAt).toLocaleTimeString()
+        : 'running';
+      const error = automation.lastError ? ` · last error: ${automation.lastError}` : '';
+      target.textContent = `${enabled} · ${mode} · last cycle ${completed} · `
+        + `${automation.lastSourceShares} sources · ${automation.lastMatched} matched · `
+        + `${automation.lastExecuted} executed · ${automation.lastSkipped} skipped · `
+        + `${automation.lastErrors} errors${error} · ${formatStorageStatus(storage)}`;
     }
 
-    const completed = automation.lastCycleCompletedAt
-      ? new Date(automation.lastCycleCompletedAt).toLocaleString()
-      : 'running';
-    const error = automation.lastError ? ` · last error: ${automation.lastError}` : '';
-    target.textContent = `${mode} · ${enabled} · last cycle ${completed} · sources ${automation.lastSourceShares} · matched ${automation.lastMatched} · executed ${automation.lastExecuted} · skipped ${automation.lastSkipped} · errors ${automation.lastErrors}${error} · ${storageText}`;
+    renderOverview();
+    if (!$('view-setup').classList.contains('hidden')) renderSetup();
   } catch (error) {
+    $('automationDot').className = 'dot dot-red';
     target.textContent = `Status failed: ${error.message}`;
   }
 }
 
 function formatStorageStatus(storage) {
   if (!storage?.items?.length) return 'no destination storage configured';
-  const reserve = formatBytes(storage.minimumFreeSpaceReserveBytes);
   const items = storage.items.map(item => {
     if (!item.exists) return `${item.name}: path missing`;
     if (item.availableFreeSpaceBytes == null) return `${item.name}: free space unknown`;
     return `${item.name}: ${formatBytes(item.availableFreeSpaceBytes)} free${item.belowReserve ? ' LOW' : ''}`;
   });
-  return `storage ${items.join(', ')} · reserve ${reserve}`;
+  return `${items.join(', ')} · reserve ${formatBytes(storage.minimumFreeSpaceReserveBytes)}`;
 }
 
-function formatBytes(value) {
-  if (value == null || Number.isNaN(Number(value))) return 'unknown';
-  const bytes = Number(value);
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
-  let index = 0;
-  let number = bytes;
-  while (number >= 1024 && index < units.length - 1) {
-    number /= 1024;
-    index++;
-  }
-  return `${number.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
+/* Settings form ------------------------------------------------------------ */
 
-settingsById('settingsForm').addEventListener('submit', async (event) => {
+$('settingsForm').addEventListener('submit', async (event) => {
   event.preventDefault();
-  const dryRun = settingsById('settingsDryRun').checked;
-  let liveModeConfirmation = null;
-
-  if (currentRuntimeSettings?.dryRun && !dryRun) {
-    liveModeConfirmation = prompt(
-      'You are enabling LIVE transfers. Safe Move may delete source files after verified destination commit. Type ENABLE_LIVE_TRANSFERS to continue.'
-    );
-    if (liveModeConfirmation !== 'ENABLE_LIVE_TRANSFERS') {
-      settingsById('settingsDryRun').checked = true;
-      settingsById('settingsMessage').textContent = 'Live mode was not enabled.';
-      return;
-    }
+  const goingLive = currentRuntimeSettings?.dryRun && !$('settingsDryRun').checked;
+  if (goingLive) {
+    openLiveModal();
+    return;
   }
-
-  const body = {
-    dryRun,
-    automationEnabled: settingsById('settingsAutomationEnabled').checked,
-    reconciliationIntervalSeconds: Number(settingsById('settingsInterval').value),
-    maxFilesPerSharePerCycle: Number(settingsById('settingsMaxFiles').value),
-    allowFilesystemTimestampFallback: settingsById('settingsTimestampFallback').checked,
-    minimumFreeSpaceReserveBytes: Number(settingsById('settingsFreeSpaceReserve').value) * 1048576,
-    automaticImageUpdatesEnabled: settingsById('settingsAutomaticImageUpdates').checked,
-    liveModeConfirmation
-  };
-
   try {
-    const updated = await settingsRequest('/api/v1/settings', {
-      method: 'PUT',
-      body: JSON.stringify(body)
-    });
-    applySettingsToForm(updated);
-    settingsById('settingsMessage').textContent = updated.dryRun
-      ? 'Saved. Media operations remain non-destructive.'
-      : 'Saved. LIVE transfers are enabled.';
-    await loadAutomationStatus();
-  } catch (error) {
-    settingsById('settingsMessage').textContent = error.message;
-    await loadRuntimeSettings();
-  }
+    await saveSettings({}, 'settingsMessage');
+  } catch {}
 });
 
-settingsById('resetSettings').addEventListener('click', async () => {
+$('resetSettings').addEventListener('click', async () => {
   if (!confirm('Reset runtime settings to the Docker/application defaults?')) return;
   try {
     const settings = await settingsRequest('/api/v1/settings', { method: 'DELETE' });
     applySettingsToForm(settings);
-    settingsById('settingsMessage').textContent = 'Runtime settings reset to defaults.';
+    $('settingsMessage').className = 'message ok';
+    $('settingsMessage').textContent = 'Runtime settings reset to defaults.';
     await loadAutomationStatus();
   } catch (error) {
-    settingsById('settingsMessage').textContent = error.message;
+    $('settingsMessage').className = 'message error';
+    $('settingsMessage').textContent = error.message;
   }
 });
 
-settingsById('refreshAutomationStatus').addEventListener('click', loadAutomationStatus);
+$('refreshAutomationStatus').addEventListener('click', loadAutomationStatus);
 
-loadRuntimeSettings();
-loadAutomationStatus();
-setInterval(loadAutomationStatus, 15000);
+/* Image updates ------------------------------------------------------------ */
 
 function renderImageUpdate(status) {
-  const target = settingsById('imageUpdateStatus');
-  const changelog = settingsById('imageUpdateChangelog');
-  const install = settingsById('installImageUpdate');
-  const latest = status.latestVersion ? ` · latest ${status.latestVersion}` : '';
-  const completed = status.lastUpdateCompletedAt ? ` · updated ${new Date(status.lastUpdateCompletedAt).toLocaleString()}` : '';
-  target.textContent = `Running ${status.runningVersion}${latest}${completed}${status.lastError ? ` · ${status.lastError}` : ''}`;
+  updateInfo = status;
+
+  const banner = $('updateBanner');
+  const headline = $('updateHeadline');
+  const detail = $('imageUpdateStatus');
+  const changelog = $('imageUpdateChangelog');
+  const install = $('installImageUpdate');
+
+  const completed = status.lastUpdateCompletedAt
+    ? ` · updated ${new Date(status.lastUpdateCompletedAt).toLocaleString()}`
+    : '';
+
+  if (status.updateAvailable && status.latestVersion) {
+    banner.classList.add('card-accent');
+    headline.style.color = 'var(--acctxt)';
+    headline.textContent = `${status.latestVersion} is available`;
+    detail.textContent = `You are running ${status.runningVersion}. The update is applied by an isolated companion container, so MediaFlow can restart itself safely.${status.lastError ? ` · ${status.lastError}` : ''}`;
+  } else {
+    banner.classList.remove('card-accent');
+    headline.style.color = 'var(--txt)';
+    headline.textContent = `Running ${status.runningVersion}`;
+    detail.textContent = `${status.latestVersion ? `Latest stable is ${status.latestVersion}. ` : ''}No update pending.${completed}${status.lastError ? ` · ${status.lastError}` : ''}`;
+  }
+
   changelog.textContent = status.changelog || '';
   changelog.classList.toggle('hidden', !status.changelog);
+  $('changelogEmpty').classList.toggle('hidden', Boolean(status.changelog));
+
   install.classList.toggle('hidden', !status.updateAvailable);
   install.disabled = !status.updaterConfigured;
   install.title = status.updaterConfigured ? '' : 'Updater companion is not configured';
+
+  $('versionRunning').textContent = status.runningVersion || 'unknown';
+  const sideUpdate = $('versionUpdate');
+  sideUpdate.classList.toggle('hidden', !status.updateAvailable);
+  if (status.updateAvailable) sideUpdate.textContent = `${status.latestVersion} available →`;
 }
 
 async function checkImageUpdate() {
-  const target = settingsById('imageUpdateStatus');
-  target.textContent = 'Checking for stable image updates…';
+  $('imageUpdateStatus').textContent = 'Checking for stable image updates…';
   try {
     renderImageUpdate(await settingsRequest('/api/v1/updates/check', { method: 'POST' }));
   } catch (error) {
-    target.textContent = `Update check failed: ${error.message}`;
+    $('imageUpdateStatus').textContent = `Update check failed: ${error.message}`;
   }
 }
 
-settingsById('checkImageUpdate').addEventListener('click', checkImageUpdate);
-settingsById('installImageUpdate').addEventListener('click', async () => {
+$('checkImageUpdate').addEventListener('click', checkImageUpdate);
+
+$('installImageUpdate').addEventListener('click', async () => {
   const confirmation = prompt('The MediaFlow container will restart. Type INSTALL_UPDATE to continue.');
   if (confirmation !== 'INSTALL_UPDATE') return;
   try {
@@ -200,10 +303,31 @@ settingsById('installImageUpdate').addEventListener('click', async () => {
       method: 'POST',
       body: JSON.stringify({ confirmation })
     }));
-    settingsById('imageUpdateStatus').textContent = 'Update requested. MediaFlow may restart shortly.';
+    $('imageUpdateStatus').textContent = 'Update requested. MediaFlow may restart shortly.';
   } catch (error) {
-    settingsById('imageUpdateStatus').textContent = `Update failed: ${error.message}`;
+    $('imageUpdateStatus').textContent = `Update failed: ${error.message}`;
   }
 });
 
-settingsRequest('/api/v1/updates').then(renderImageUpdate).catch(() => {});
+$('settingsAutomaticImageUpdates').addEventListener('change', async () => {
+  const message = $('autoUpdateMessage');
+  try {
+    await saveSettings({});
+    message.className = 'message ok';
+    message.textContent = $('settingsAutomaticImageUpdates').checked
+      ? 'Stable updates will install automatically.'
+      : 'Automatic updates are off.';
+  } catch (error) {
+    message.className = 'message error';
+    message.textContent = error.message;
+  }
+});
+
+/* Boot ---------------------------------------------------------------------- */
+
+loadRuntimeSettings();
+loadAutomationStatus();
+setInterval(loadAutomationStatus, 15000);
+settingsRequest('/api/v1/updates').then(renderImageUpdate).catch(() => {
+  $('versionRunning').textContent = 'unknown';
+});
