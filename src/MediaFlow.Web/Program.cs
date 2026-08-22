@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json.Serialization;
 using MediaFlow.Application.Abstractions;
 using MediaFlow.Application.Services;
@@ -48,7 +49,10 @@ builder.Services.AddSingleton<IRuntimeSettingsStore>(
 builder.Services.AddHostedService<SourceShareWatcherWorker>();
 builder.Services.AddHostedService<MediaRoutingWorker>();
 builder.Services.AddHostedService<MqttIntegrationWorker>();
+// InformationalVersion keeps the prerelease suffix ("0.0.0-dev.42") that AssemblyVersion drops.
 var runningVersion = builder.Configuration["MediaFlow:Updates:CurrentVersion"]
+    ?? typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+        ?.InformationalVersion.Split('+')[0]
     ?? typeof(Program).Assembly.GetName().Version?.ToString(3)
     ?? "0.0.0";
 builder.Services.AddSingleton(new ImageUpdateOptions(

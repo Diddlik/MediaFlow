@@ -54,6 +54,7 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 - share scan now counts every media file in the share instead of stopping at the sampled page, so large shares no longer report a flat `500 media files`.
 - the console now shows the resolved destination folder (`/destinations/family/Sommerurlaub`) instead of the raw `{event.name}` template.
 - the selected row in the mounted-folder browser no longer clips its folder name and path.
+- the reported running version now keeps its prerelease suffix (`0.0.0-dev.42` instead of `0.0.0`), read from `InformationalVersion`.
 
 ### Security
 
