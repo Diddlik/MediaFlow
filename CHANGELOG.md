@@ -6,6 +6,8 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.0.0] - 2026-08-22
+
 ### Added
 
 - .NET 10 layered application structure.
@@ -51,6 +53,7 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ### Fixed
 
+- routing preview now evaluates up to 2,000 files instead of stopping after the first 50 displayed by the console.
 - share scan now counts every media file in the share instead of stopping at the sampled page, so large shares no longer report a flat `500 media files`.
 - the console now shows the resolved destination folder (`/destinations/family/Sommerurlaub`) instead of the raw `{event.name}` template.
 - the selected row in the mounted-folder browser no longer clips its folder name and path.
@@ -63,7 +66,3 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 - destination path resolution is restricted to the configured destination Share.
 - Live mode is opt-in and requires explicit confirmation.
 - older application builds refuse to mutate database schemas created by newer MediaFlow versions.
-
-## 0.x history
-
-The repository is still in active pre-release development. The first formal tagged release will create the first dated/versioned changelog section from the `Unreleased` entries above.
