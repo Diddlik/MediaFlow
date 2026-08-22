@@ -11,7 +11,7 @@ public sealed class SourceShareWatcherWorker(
     ILogger<SourceShareWatcherWorker> logger) : BackgroundService
 {
     private readonly Dictionary<Guid, WatchRegistration> _watchers = [];
-    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _stabilityWakeups = new();
+    private readonly ConcurrentDictionary<Guid, PendingStability> _stabilityWakeups = new();
     private readonly object _watcherGate = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -110,6 +110,7 @@ public sealed class SourceShareWatcherWorker(
             RenamedEventHandler renamed = (_, args) => OnFileSystemChanged(share.Id, fingerprint.StabilitySeconds, args.FullPath);
             ErrorEventHandler error = (_, args) =>
             {
+                // Buffer overflow means unknown lost paths, so fall back to a full share walk.
                 logger.LogWarning(args.GetException(), "FileSystemWatcher error for share {Share}", share.Name);
                 wakeSignal.Wake();
             };
@@ -147,42 +148,116 @@ public sealed class SourceShareWatcherWorker(
     {
         logger.LogDebug("Filesystem change detected for share {ShareId}: {Path}", shareId, path);
 
-        // First scan records the current file size/write timestamp immediately.
-        wakeSignal.Wake();
+        // First scan records the current file size/write timestamp immediately. The path is carried on
+        // the signal so the routing worker evaluates just this file instead of re-walking the share.
+        wakeSignal.WakeForPath(shareId, path);
 
         // A second scan after the last observed filesystem change allows the
         // discovery service to confirm that the file stayed unchanged for the
-        // configured stability interval.
-        var next = new CancellationTokenSource();
-        var previous = _stabilityWakeups.AddOrUpdate(
+        // configured stability interval. Every path seen during the burst is retained, because the
+        // debounce is per share and would otherwise only ever re-check the file that arrived last.
+        var next = new PendingStability();
+        var pending = _stabilityWakeups.AddOrUpdate(
             shareId,
             next,
-            (_, existing) =>
-            {
-                existing.Cancel();
-                existing.Dispose();
-                return next;
-            });
+            (_, existing) => existing.IsRetired ? next : existing);
 
-        if (!ReferenceEquals(previous, next)) return;
+        pending.Add(path);
+        if (!ReferenceEquals(pending, next))
+        {
+            pending.Postpone(stabilitySeconds);
+            next.Dispose();
+            return;
+        }
 
+        pending.Postpone(stabilitySeconds);
         _ = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(stabilitySeconds + 1, 2, 3601)), next.Token);
-                wakeSignal.Wake();
+                while (pending.TryGetDelay(out var delay))
+                {
+                    await Task.Delay(delay, pending.Token);
+                }
+
+                foreach (var pendingPath in pending.Retire())
+                {
+                    wakeSignal.WakeForPath(shareId, pendingPath);
+                }
             }
             catch (OperationCanceledException)
             {
             }
             finally
             {
-                if (_stabilityWakeups.TryGetValue(shareId, out var current) && ReferenceEquals(current, next))
+                pending.Retire();
+                if (_stabilityWakeups.TryGetValue(shareId, out var current) && ReferenceEquals(current, pending))
                     _stabilityWakeups.TryRemove(shareId, out _);
-                next.Dispose();
+                pending.Dispose();
             }
         });
+    }
+
+    /// <summary>
+    /// Debounced set of paths awaiting a stability re-check for one share. Each new change extends the
+    /// deadline instead of restarting the timer task, so a long sync burst produces one re-check pass.
+    /// </summary>
+    private sealed class PendingStability : IDisposable
+    {
+        private readonly CancellationTokenSource _cancellation = new();
+        private readonly Lock _gate = new();
+        private readonly HashSet<string> _paths = new(StringComparer.Ordinal);
+        private DateTimeOffset _dueAt = DateTimeOffset.MinValue;
+        private bool _retired;
+
+        public CancellationToken Token => _cancellation.Token;
+
+        public bool IsRetired
+        {
+            get { lock (_gate) { return _retired; } }
+        }
+
+        public void Add(string path)
+        {
+            lock (_gate)
+            {
+                if (!_retired) _paths.Add(path);
+            }
+        }
+
+        public void Postpone(int stabilitySeconds)
+        {
+            var delay = TimeSpan.FromSeconds(Math.Clamp(stabilitySeconds + 1, 2, 3601));
+            lock (_gate)
+            {
+                _dueAt = DateTimeOffset.UtcNow + delay;
+            }
+        }
+
+        public bool TryGetDelay(out TimeSpan delay)
+        {
+            lock (_gate)
+            {
+                var remaining = _dueAt - DateTimeOffset.UtcNow;
+                delay = remaining;
+                return remaining > TimeSpan.Zero;
+            }
+        }
+
+        public IReadOnlyList<string> Retire()
+        {
+            lock (_gate)
+            {
+                _retired = true;
+                var drained = _paths.ToArray();
+                _paths.Clear();
+                return drained;
+            }
+        }
+
+        public void Cancel() => _cancellation.Cancel();
+
+        public void Dispose() => _cancellation.Dispose();
     }
 
     private sealed record WatchFingerprint(string Path, bool Recursive, int StabilitySeconds);

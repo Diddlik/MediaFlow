@@ -13,6 +13,11 @@ public sealed class RoutingPreviewService(
     DestinationPathResolver destinationPaths,
     IClock clock)
 {
+    /// <summary>
+    /// Walks the whole share and evaluates the least-recently-seen slice of it. This is the periodic
+    /// reconciliation path; watcher-driven work should use <see cref="EvaluateAsync"/> instead, which
+    /// skips the walk.
+    /// </summary>
     public async Task<IReadOnlyList<RoutingPreviewItem>> PreviewAsync(
         Share sourceShare,
         int limit,
@@ -31,6 +36,51 @@ public sealed class RoutingPreviewService(
             .Take(limit)
             .ToArray();
 
+        return await EvaluateCoreAsync(
+            sourceShare,
+            stableFiles,
+            indexedFiles,
+            maxParallelMetadataReads,
+            progress,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Evaluates an explicit set of already-discovered files, without walking the share. Used for
+    /// filesystem-watcher notifications, which already name the files that changed.
+    /// </summary>
+    public async Task<IReadOnlyList<RoutingPreviewItem>> EvaluateAsync(
+        Share sourceShare,
+        IReadOnlyList<DiscoveredFile> candidates,
+        CancellationToken cancellationToken = default,
+        int maxParallelMetadataReads = 1,
+        Action<RoutingPreviewProgress>? progress = null)
+    {
+        var stableFiles = candidates
+            .Where(x => x.State == DiscoveryState.Stable)
+            .ToArray();
+        if (stableFiles.Length == 0) return [];
+
+        var indexedFiles = (await mediaFiles.ListBySourceAsync(sourceShare.Id, cancellationToken))
+            .ToDictionary(x => x.SourcePath, StringComparer.Ordinal);
+
+        return await EvaluateCoreAsync(
+            sourceShare,
+            stableFiles,
+            indexedFiles,
+            maxParallelMetadataReads,
+            progress,
+            cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<RoutingPreviewItem>> EvaluateCoreAsync(
+        Share sourceShare,
+        DiscoveredFile[] stableFiles,
+        Dictionary<string, MediaFile> indexedFiles,
+        int maxParallelMetadataReads,
+        Action<RoutingPreviewProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         var metadata = new MediaMetadata?[stableFiles.Length];
         var cached = 0;
         var pending = new List<int>(stableFiles.Length);

@@ -7,6 +7,7 @@ namespace MomentFerry.Web.Background;
 public sealed class MediaRoutingWorker(
     IShareRepository shares,
     RoutingPreviewService routing,
+    ShareDiscoveryService discovery,
     TransferCoordinator transfers,
     IRuntimeSettingsStore runtimeSettings,
     AutomationStatus status,
@@ -22,15 +23,26 @@ public sealed class MediaRoutingWorker(
         if (initialDelay > TimeSpan.Zero)
             await Task.Delay(initialDelay, stoppingToken);
 
+        // Tracked independently of the wait loop: watcher traffic resets the wait, and must not be able
+        // to postpone the periodic full walk indefinitely.
+        var lastFullReconcile = DateTimeOffset.MinValue;
+        var pending = new AutomationWakeRequest(true, new Dictionary<Guid, IReadOnlyCollection<string>>());
+
         while (!stoppingToken.IsCancellationRequested)
         {
             var settings = await runtimeSettings.GetAsync(stoppingToken);
-            if (settings.AutomationEnabled)
+            var interval = TimeSpan.FromSeconds(settings.ReconciliationIntervalSeconds);
+            var fullReconcileDue = pending.FullReconcile || clock.UtcNow - lastFullReconcile >= interval;
+
+            if (settings.AutomationEnabled && (fullReconcileDue || pending.TargetedPaths.Count > 0))
             {
                 status.CycleStarted(clock.UtcNow);
                 try
                 {
-                    var result = await ProcessCycleAsync(settings, stoppingToken);
+                    var result = await ProcessCycleAsync(
+                        settings,
+                        fullReconcileDue ? null : pending.TargetedPaths,
+                        stoppingToken);
                     status.CycleCompleted(
                         clock.UtcNow,
                         result.SourceShares,
@@ -51,15 +63,27 @@ public sealed class MediaRoutingWorker(
                 }
             }
 
+            // Stamped after the cycle, not before: the interval is a rest gap between walks, so a share
+            // slower than the interval still gets a full pause instead of running back to back. This also
+            // consumes the tick while automation is disabled, which would otherwise spin on a zero wait.
+            if (fullReconcileDue) lastFullReconcile = clock.UtcNow;
+
             settings = await runtimeSettings.GetAsync(stoppingToken);
-            await wakeSignal.WaitAsync(
-                TimeSpan.FromSeconds(settings.ReconciliationIntervalSeconds),
-                stoppingToken);
+            var nextFullReconcile = lastFullReconcile + TimeSpan.FromSeconds(settings.ReconciliationIntervalSeconds);
+            var untilFullReconcile = nextFullReconcile - clock.UtcNow;
+            if (untilFullReconcile < TimeSpan.Zero) untilFullReconcile = TimeSpan.Zero;
+
+            pending = await wakeSignal.WaitAsync(untilFullReconcile, stoppingToken);
         }
     }
 
+    /// <summary>
+    /// Runs one routing cycle. A null <paramref name="targetedPaths"/> performs the periodic full walk;
+    /// otherwise only the named watcher paths are evaluated, skipping share enumeration entirely.
+    /// </summary>
     private async Task<CycleResult> ProcessCycleAsync(
         MomentFerryRuntimeSettings settings,
+        IReadOnlyDictionary<Guid, IReadOnlyCollection<string>>? targetedPaths,
         CancellationToken cancellationToken)
     {
         var matched = 0;
@@ -70,6 +94,7 @@ public sealed class MediaRoutingWorker(
 
         var sourceShares = (await shares.ListAsync(cancellationToken))
             .Where(x => x.Enabled && x.Role is ShareRole.Source or ShareRole.Both)
+            .Where(x => targetedPaths is null || targetedPaths.ContainsKey(x.Id))
             .ToArray();
 
         foreach (var sourceShare in sourceShares)
@@ -78,16 +103,25 @@ public sealed class MediaRoutingWorker(
             IReadOnlyList<RoutingPreviewItem> items;
             try
             {
-                items = await routing.PreviewAsync(
-                    sourceShare,
-                    settings.MaxFilesPerSharePerCycle,
-                    cancellationToken,
-                    settings.MaxParallelMetadataReads,
-                    progress => status.Progress(
-                        sourceShare.Name,
-                        progress.Phase,
-                        progress.Processed,
-                        progress.Total));
+                void Report(RoutingPreviewProgress progress) => status.Progress(
+                    sourceShare.Name,
+                    progress.Phase,
+                    progress.Processed,
+                    progress.Total);
+
+                items = targetedPaths is null
+                    ? await routing.PreviewAsync(
+                        sourceShare,
+                        settings.MaxFilesPerSharePerCycle,
+                        cancellationToken,
+                        settings.MaxParallelMetadataReads,
+                        Report)
+                    : await routing.EvaluateAsync(
+                        sourceShare,
+                        ObserveTargeted(sourceShare, targetedPaths[sourceShare.Id]),
+                        cancellationToken,
+                        settings.MaxParallelMetadataReads,
+                        Report);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
@@ -155,6 +189,24 @@ public sealed class MediaRoutingWorker(
         }
 
         return new CycleResult(sourceShares.Length, matched, wouldMove, executed, skipped, errors);
+    }
+
+    /// <summary>
+    /// Applies discovery rules to the watcher-reported paths. Paths that no longer exist, fall outside
+    /// the share, or are not yet stable simply drop out and are picked up by the next full walk.
+    /// </summary>
+    private IReadOnlyList<DiscoveredFile> ObserveTargeted(Share sourceShare, IReadOnlyCollection<string> paths)
+    {
+        var observed = new List<DiscoveredFile>(paths.Count);
+        foreach (var path in paths)
+        {
+            if (discovery.Observe(sourceShare, path) is { } file)
+            {
+                observed.Add(file);
+            }
+        }
+
+        return observed;
     }
 
     private sealed record CycleResult(

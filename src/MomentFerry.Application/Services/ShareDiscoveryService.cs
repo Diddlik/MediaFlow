@@ -26,59 +26,88 @@ public sealed class ShareDiscoveryService(IFileSystemGateway fileSystem, IClock 
     /// <summary>Lazily walks the share so callers can either sample it or count all of it.</summary>
     public IEnumerable<DiscoveredFile> Enumerate(Share share)
     {
-        if (!share.Enabled || share.Role == ShareRole.Destination || !fileSystem.DirectoryExists(share.Path))
+        // Guarded once per walk: ObserveCore must stay free of per-file directory syscalls.
+        if (!IsWatchable(share))
         {
             yield break;
         }
 
-        var now = clock.UtcNow;
-
         foreach (var path in fileSystem.EnumerateFiles(share.Path, share.Recursive))
         {
-            var relativePath = Path.GetRelativePath(share.Path, path).Replace('\\', '/');
-            if (IsIgnored(relativePath, share.IgnorePatterns))
+            if (ObserveCore(share, path) is { } discovered)
             {
-                continue;
+                yield return discovered;
             }
-
-            var mediaType = GetMediaType(path);
-            if (mediaType == MediaType.Other || !share.AllowedMediaTypes.Contains(mediaType))
-            {
-                continue;
-            }
-
-            long size;
-            DateTimeOffset lastWrite;
-            try
-            {
-                size = fileSystem.GetFileLength(path);
-                lastWrite = fileSystem.GetLastWriteTimeUtc(path);
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-
-            var key = Path.GetFullPath(path);
-            var observation = _observations.AddOrUpdate(
-                key,
-                _ => new Observation(size, lastWrite, now),
-                (_, previous) => previous.Size == size && previous.LastWriteUtc == lastWrite
-                    ? previous
-                    : new Observation(size, lastWrite, now));
-
-            var stable = now - observation.UnchangedSince >= TimeSpan.FromSeconds(share.StabilitySeconds);
-
-            yield return new DiscoveredFile(
-                path,
-                relativePath,
-                mediaType,
-                size,
-                lastWrite,
-                observation.UnchangedSince,
-                stable ? DiscoveryState.Stable : DiscoveryState.WaitingStable);
         }
     }
+
+    /// <summary>
+    /// Applies the discovery rules to a single path. Used for filesystem-watcher notifications, which
+    /// already name the changed file and so must not pay for a full share walk.
+    /// </summary>
+    public DiscoveredFile? Observe(Share share, string path)
+    {
+        if (!IsWatchable(share)) return null;
+
+        var relativePath = Path.GetRelativePath(share.Path, path).Replace('\\', '/');
+        if (relativePath.StartsWith("../", StringComparison.Ordinal) || Path.IsPathRooted(relativePath))
+        {
+            // A watcher event for a path outside the share must never be routed as if it belonged to it.
+            return null;
+        }
+
+        return ObserveCore(share, path);
+    }
+
+    private DiscoveredFile? ObserveCore(Share share, string path)
+    {
+        var relativePath = Path.GetRelativePath(share.Path, path).Replace('\\', '/');
+        if (IsIgnored(relativePath, share.IgnorePatterns))
+        {
+            return null;
+        }
+
+        var mediaType = GetMediaType(path);
+        if (mediaType == MediaType.Other || !share.AllowedMediaTypes.Contains(mediaType))
+        {
+            return null;
+        }
+
+        long size;
+        DateTimeOffset lastWrite;
+        try
+        {
+            size = fileSystem.GetFileLength(path);
+            lastWrite = fileSystem.GetLastWriteTimeUtc(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+
+        var now = clock.UtcNow;
+        var key = Path.GetFullPath(path);
+        var observation = _observations.AddOrUpdate(
+            key,
+            _ => new Observation(size, lastWrite, now),
+            (_, previous) => previous.Size == size && previous.LastWriteUtc == lastWrite
+                ? previous
+                : new Observation(size, lastWrite, now));
+
+        var stable = now - observation.UnchangedSince >= TimeSpan.FromSeconds(share.StabilitySeconds);
+
+        return new DiscoveredFile(
+            path,
+            relativePath,
+            mediaType,
+            size,
+            lastWrite,
+            observation.UnchangedSince,
+            stable ? DiscoveryState.Stable : DiscoveryState.WaitingStable);
+    }
+
+    private bool IsWatchable(Share share)
+        => share.Enabled && share.Role != ShareRole.Destination && fileSystem.DirectoryExists(share.Path);
 
     private static MediaType GetMediaType(string path)
     {

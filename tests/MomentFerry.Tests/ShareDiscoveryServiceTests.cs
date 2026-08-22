@@ -44,6 +44,74 @@ public sealed class ShareDiscoveryServiceTests : IDisposable
         Assert.Equal("album/photo.jpg", file.RelativePath);
     }
 
+    [Fact]
+    public void Observe_AppliesTheSameRulesAsEnumerateForASinglePath()
+    {
+        var album = Directory.CreateDirectory(Path.Combine(root, "album"));
+        var photoPath = Path.Combine(album.FullName, "photo.jpg");
+        File.WriteAllText(photoPath, "photo");
+        var thumbnailDirectory = Directory.CreateDirectory(Path.Combine(album.FullName, "@eaDir", "photo.jpg"));
+        var thumbnailPath = Path.Combine(thumbnailDirectory.FullName, "SYNOFILE_THUMB_M.jpg");
+        File.WriteAllText(thumbnailPath, "thumbnail");
+        var documentPath = Path.Combine(album.FullName, "notes.txt");
+        File.WriteAllText(documentPath, "notes");
+
+        var service = new ShareDiscoveryService(
+            new LocalFileSystemGateway(),
+            new FixedClock(DateTimeOffset.UnixEpoch));
+        var share = new Share { Name = "pavel", Path = root, Role = ShareRole.Source };
+
+        Assert.Equal("album/photo.jpg", service.Observe(share, photoPath)!.RelativePath);
+        Assert.Null(service.Observe(share, thumbnailPath));
+        Assert.Null(service.Observe(share, documentPath));
+        Assert.Null(service.Observe(share, Path.Combine(album.FullName, "missing.jpg")));
+    }
+
+    [Fact]
+    public void Observe_RejectsPathsOutsideTheShare()
+    {
+        Directory.CreateDirectory(root);
+        var outsideDirectory = Directory.CreateDirectory(Path.Combine(root, "..", "momentferry-outside-" + Guid.NewGuid().ToString("N")));
+        var outsidePath = Path.Combine(outsideDirectory.FullName, "photo.jpg");
+        File.WriteAllText(outsidePath, "photo");
+
+        try
+        {
+            var service = new ShareDiscoveryService(
+                new LocalFileSystemGateway(),
+                new FixedClock(DateTimeOffset.UnixEpoch));
+            var share = new Share { Name = "pavel", Path = root, Role = ShareRole.Source };
+
+            Assert.Null(service.Observe(share, outsidePath));
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDirectory.FullName, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Observe_ReportsWaitingStableUntilTheStabilityWindowElapses()
+    {
+        Directory.CreateDirectory(root);
+        var photoPath = Path.Combine(root, "photo.jpg");
+        File.WriteAllText(photoPath, "photo");
+
+        var clock = new MutableClock(DateTimeOffset.UnixEpoch);
+        var service = new ShareDiscoveryService(new LocalFileSystemGateway(), clock);
+        var share = new Share { Name = "pavel", Path = root, Role = ShareRole.Source, StabilitySeconds = 30 };
+
+        Assert.Equal(DiscoveryState.WaitingStable, service.Observe(share, photoPath)!.State);
+
+        clock.UtcNow = DateTimeOffset.UnixEpoch.AddSeconds(31);
+        Assert.Equal(DiscoveryState.Stable, service.Observe(share, photoPath)!.State);
+    }
+
+    private sealed class MutableClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset UtcNow { get; set; } = now;
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root)) Directory.Delete(root, recursive: true);

@@ -3,7 +3,7 @@ namespace MomentFerry.Application.Abstractions;
 public sealed record MomentFerryRuntimeSettings(
     bool DryRun = true,
     bool AutomationEnabled = true,
-    int ReconciliationIntervalSeconds = 300,
+    int ReconciliationIntervalSeconds = 1800,
     int MaxFilesPerSharePerCycle = 200,
     int MaxParallelMetadataReads = 2,
     bool AllowFilesystemTimestampFallback = false,

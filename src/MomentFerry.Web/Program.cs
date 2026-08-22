@@ -41,7 +41,7 @@ builder.Services.AddSingleton<AutomationWakeSignal>();
 var runtimeDefaults = new MomentFerryRuntimeSettings(
     builder.Configuration.GetValue("MomentFerry:DryRun", true),
     builder.Configuration.GetValue("MomentFerry:Automation:Enabled", true),
-    builder.Configuration.GetValue("MomentFerry:ReconciliationIntervalSeconds", 300),
+    builder.Configuration.GetValue("MomentFerry:ReconciliationIntervalSeconds", 1800),
     builder.Configuration.GetValue("MomentFerry:Automation:MaxFilesPerSharePerCycle", 200),
     builder.Configuration.GetValue("MomentFerry:Automation:MaxParallelMetadataReads", 2),
     builder.Configuration.GetValue("MomentFerry:Automation:AllowFilesystemTimestampFallback", false),

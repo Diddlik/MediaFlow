@@ -12,7 +12,7 @@ services:
       # ./data/runtime-settings.json takes precedence for these runtime values.
       MomentFerry__DryRun: "true"
       MomentFerry__Automation__Enabled: "true"
-      MomentFerry__ReconciliationIntervalSeconds: "300"
+      MomentFerry__ReconciliationIntervalSeconds: "1800"
       MomentFerry__Automation__MaxFilesPerSharePerCycle: "200"
       MomentFerry__Automation__AllowFilesystemTimestampFallback: "false"
       MomentFerry__MinimumFreeSpaceReserveBytes: "536870912"
