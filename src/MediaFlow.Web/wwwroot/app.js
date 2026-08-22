@@ -367,9 +367,25 @@ function renderRunningEvent() {
   const mode = event.operationMode === 'Copy' ? 'Copy' : 'Safe Move';
   const dry = appInfo.dryRun !== false;
 
-  const matched = automationInfo ? automationInfo.lastMatched : 0;
-  const executed = automationInfo ? automationInfo.lastExecuted : 0;
+  const cycleRunning = automationInfo?.cycleRunning === true;
+  const matched = automationInfo ? (cycleRunning ? automationInfo.currentMatched : automationInfo.lastMatched) : 0;
+  const moved = automationInfo
+    ? (dry
+      ? (cycleRunning ? automationInfo.currentWouldMove : automationInfo.lastWouldMove)
+      : automationInfo.lastExecuted)
+    : 0;
   const held = quarantinedOperations.length;
+  const processed = automationInfo?.currentProcessed || 0;
+  const total = automationInfo?.currentTotal || 0;
+  const percent = total ? Math.min(100, Math.round(processed / total * 100)) : 0;
+  const progress = cycleRunning ? `
+    <div class="event-progress">
+      <div class="event-progress-head">
+        <span>${escapeHtml(automationInfo.currentPhase || 'Preparing')} · ${escapeHtml(automationInfo.currentShareName || 'sources')}</span>
+        <span>${total ? `${formatNumber(processed)} / ${formatNumber(total)} · ${percent}%` : 'starting…'}</span>
+      </div>
+      <div class="progress-track" role="progressbar" aria-label="Current automation cycle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>
+    </div>` : '';
 
   body.innerHTML = `
     <div class="row" style="align-items:baseline;gap:10px;margin-bottom:3px">
@@ -379,14 +395,15 @@ function renderRunningEvent() {
     <div class="mono" style="font-size:12px;color:var(--mut);margin-bottom:14px">
       ${escapeHtml(window_)} · ${escapeHtml(groupName)} → ${escapeHtml(destinationPath)}
     </div>
+    ${progress}
     <div class="stat-grid stat-grid-3">
       <div class="stat">
         <div class="stat-value">${formatNumber(matched)}</div>
-        <div class="stat-label">matched last cycle</div>
+        <div class="stat-label">${cycleRunning ? 'matched so far' : 'matched last cycle'}</div>
       </div>
       <div class="stat">
-        <div class="stat-value acc">${formatNumber(executed)}</div>
-        <div class="stat-label">${dry ? 'would move' : 'moved'}</div>
+        <div class="stat-value acc">${formatNumber(moved)}</div>
+        <div class="stat-label">${dry ? (cycleRunning ? 'would move so far' : 'would move') : 'moved last cycle'}</div>
       </div>
       <button class="stat" type="button" data-view="ops">
         <div class="stat-value amb">${formatNumber(held)}</div>

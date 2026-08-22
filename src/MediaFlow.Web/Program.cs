@@ -32,7 +32,10 @@ builder.Services.AddSingleton<TransferCoordinator>();
 builder.Services.AddSingleton<OperationRecoveryService>();
 builder.Services.AddSingleton<EventControlService>();
 builder.Services.AddSingleton<QuarantineService>();
-builder.Services.AddSingleton<AutomationStatus>();
+var automationStatusPath = builder.Configuration["MediaFlow:Automation:StatusPath"] ?? "data/automation-status.json";
+builder.Services.AddSingleton(sp => new AutomationStatus(
+    automationStatusPath,
+    sp.GetRequiredService<ILogger<AutomationStatus>>()));
 builder.Services.AddSingleton<AutomationWakeSignal>();
 
 var runtimeDefaults = new MediaFlowRuntimeSettings(
@@ -40,6 +43,7 @@ var runtimeDefaults = new MediaFlowRuntimeSettings(
     builder.Configuration.GetValue("MediaFlow:Automation:Enabled", true),
     builder.Configuration.GetValue("MediaFlow:ReconciliationIntervalSeconds", 300),
     builder.Configuration.GetValue("MediaFlow:Automation:MaxFilesPerSharePerCycle", 200),
+    builder.Configuration.GetValue("MediaFlow:Automation:MaxParallelMetadataReads", 2),
     builder.Configuration.GetValue("MediaFlow:Automation:AllowFilesystemTimestampFallback", false),
     builder.Configuration.GetValue("MediaFlow:MinimumFreeSpaceReserveBytes", LocalFileSystemGateway.DefaultMinimumFreeSpaceReserveBytes),
     builder.Configuration.GetValue("MediaFlow:Updates:Automatic", false));
@@ -279,6 +283,7 @@ app.MapGet("/api/v1/shares/{id:guid}/metadata-preview", async (
     int? limit,
     IShareRepository repository,
     MetadataPreviewService previewService,
+    IRuntimeSettingsStore runtimeSettings,
     CancellationToken ct) =>
 {
     var share = await repository.GetAsync(id, ct);
@@ -288,7 +293,12 @@ app.MapGet("/api/v1/shares/{id:guid}/metadata-preview", async (
 
     try
     {
-        var preview = await previewService.PreviewAsync(share, Math.Clamp(limit ?? 10, 1, 50), ct);
+        var settings = await runtimeSettings.GetAsync(ct);
+        var preview = await previewService.PreviewAsync(
+            share,
+            Math.Clamp(limit ?? 10, 1, 50),
+            ct,
+            settings.MaxParallelMetadataReads);
         return Results.Ok(new { share.Id, share.Name, total = preview.Count, items = preview });
     }
     catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)

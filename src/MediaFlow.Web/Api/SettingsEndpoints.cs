@@ -27,6 +27,8 @@ public static class SettingsEndpoints
                 return Results.BadRequest(new { error = "ReconciliationIntervalSeconds must be between 15 and 86400." });
             if (request.MaxFilesPerSharePerCycle is < 1 or > 2000)
                 return Results.BadRequest(new { error = "MaxFilesPerSharePerCycle must be between 1 and 2000." });
+            if (request.MaxParallelMetadataReads is < 1 or > 8)
+                return Results.BadRequest(new { error = "MaxParallelMetadataReads must be between 1 and 8." });
             if (request.MinimumFreeSpaceReserveBytes is < 0 or > 1099511627776)
                 return Results.BadRequest(new { error = "MinimumFreeSpaceReserveBytes must be between 0 and 1099511627776." });
 
@@ -45,6 +47,7 @@ public static class SettingsEndpoints
                 request.AutomationEnabled,
                 request.ReconciliationIntervalSeconds,
                 request.MaxFilesPerSharePerCycle,
+                request.MaxParallelMetadataReads,
                 request.AllowFilesystemTimestampFallback,
                 request.MinimumFreeSpaceReserveBytes ?? current.MinimumFreeSpaceReserveBytes,
                 request.AutomaticImageUpdatesEnabled ?? current.AutomaticImageUpdatesEnabled), ct);
@@ -68,6 +71,7 @@ public static class SettingsEndpoints
                 settings.AutomationEnabled,
                 settings.ReconciliationIntervalSeconds,
                 settings.MaxFilesPerSharePerCycle,
+                settings.MaxParallelMetadataReads,
                 settings.AllowFilesystemTimestampFallback,
                 settings.MinimumFreeSpaceReserveBytes,
                 settings.AutomaticImageUpdatesEnabled,
@@ -156,6 +160,7 @@ public sealed record RuntimeSettingsRequest(
     bool AutomationEnabled,
     int ReconciliationIntervalSeconds,
     int MaxFilesPerSharePerCycle,
+    int MaxParallelMetadataReads,
     bool AllowFilesystemTimestampFallback,
     long? MinimumFreeSpaceReserveBytes = null,
     bool? AutomaticImageUpdatesEnabled = null,

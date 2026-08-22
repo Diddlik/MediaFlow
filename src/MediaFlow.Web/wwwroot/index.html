@@ -206,7 +206,7 @@
               </div>
             </div>
 
-            <div class="grid-3">
+            <div class="grid-4">
               <label class="field">If a name already exists
                 <select id="eventConflict">
                   <option value="AppendSourceName">Add the source name</option>
@@ -420,6 +420,10 @@
               <label class="field">Max files per source, per scan
                 <input id="settingsMaxFiles" type="number" min="1" max="2000" required />
                 <span class="field-hint">Keeps the NAS responsive.</span>
+              </label>
+              <label class="field">Parallel metadata reads
+                <input id="settingsParallelMetadata" type="number" min="1" max="8" required />
+                <span class="field-hint">Two is a safe NAS default.</span>
               </label>
               <label class="field">Keep free at destination (MiB)
                 <input id="settingsFreeSpaceReserve" type="number" min="0" max="1048576" required />

@@ -40,6 +40,12 @@ For an existing MediaFlow database created before `schema_migrations` existed, s
 
 Automated tests cover preservation of existing Share data during this baseline process.
 
+## Schema version 2
+
+Version 2 adds nullable `media_files.source_last_write_at_utc`. Existing rows are preserved and have their metadata refreshed once; subsequent cycles reuse indexed capture metadata while file size and last-write time remain unchanged.
+
+Back up `/app/data` before upgrading. Version 1.0.2 and older refuse to open the version 2 database, so rollback requires restoring the pre-upgrade data backup.
+
 ## Adding a migration
 
 Never edit the SQL of an already released migration to change the meaning of its version. Add a new migration instead.

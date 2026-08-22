@@ -13,6 +13,7 @@ public sealed class MediaFile
     public string? TimestampSource { get; init; }
     public bool IsTimezoneInferred { get; init; }
     public string? Sha256 { get; init; }
+    public DateTimeOffset? SourceLastWriteAt { get; init; }
     public DateTimeOffset FirstSeenAt { get; init; }
     public DateTimeOffset LastSeenAt { get; init; }
 }

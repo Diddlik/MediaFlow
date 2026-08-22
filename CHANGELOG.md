@@ -6,6 +6,23 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.0.3] - 2026-08-22
+
+### Added
+
+- the running-event card now shows the active source, phase, processed count and percentage while an automation cycle is running;
+- metadata extraction parallelism is configurable from 1 to 8, with a NAS-friendly default of 2.
+
+### Changed
+
+- unchanged indexed media reuse their capture metadata based on source size and last-write time instead of invoking ExifTool again;
+- database schema version 2 adds `media_files.source_last_write_at_utc`; back up `/app/data` before updating because older MediaFlow versions refuse this newer schema.
+
+### Fixed
+
+- completed automation counters survive container restarts;
+- Dry Run now reports the number of files that would move instead of displaying the always-zero executed count.
+
 ## [1.0.2] - 2026-08-22
 
 ### Added

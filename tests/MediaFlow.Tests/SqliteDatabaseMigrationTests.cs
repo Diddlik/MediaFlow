@@ -32,10 +32,11 @@ public sealed class SqliteDatabaseMigrationTests : IAsyncLifetime
         await using var versionCommand = connection.CreateCommand();
         versionCommand.CommandText = "SELECT version, name FROM schema_migrations ORDER BY version;";
         await using var reader = await versionCommand.ExecuteReaderAsync();
-        Assert.True(await reader.ReadAsync());
-        Assert.Equal(SqliteDatabaseInitializer.CurrentSchemaVersion, reader.GetInt32(0));
-        Assert.Equal("initial-schema", reader.GetString(1));
-        Assert.False(await reader.ReadAsync());
+        var migrations = new List<(int Version, string Name)>();
+        while (await reader.ReadAsync()) migrations.Add((reader.GetInt32(0), reader.GetString(1)));
+        Assert.Equal(SqliteDatabaseInitializer.CurrentSchemaVersion, migrations.Count);
+        Assert.Equal((1, "initial-schema"), migrations[0]);
+        Assert.Equal((2, "media-source-last-write"), migrations[1]);
         await reader.DisposeAsync();
 
         foreach (var table in new[] { "shares", "source_groups", "events", "media_files", "operations" })
@@ -110,6 +111,57 @@ public sealed class SqliteDatabaseMigrationTests : IAsyncLifetime
         await using var eventsCommand = verify.CreateCommand();
         eventsCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events';";
         Assert.Equal(1L, (long)(await eventsCommand.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task VersionOneDatabase_AddsSourceLastWriteWithoutLosingMedia()
+    {
+        var factory = new SqliteConnectionFactory(DatabasePath);
+        var mediaId = Guid.NewGuid().ToString("D");
+        await using (var connection = await factory.OpenAsync())
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE schema_migrations (
+                    version INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    applied_at_utc TEXT NOT NULL
+                );
+                INSERT INTO schema_migrations VALUES (1, 'initial-schema', '2026-08-01T00:00:00Z');
+                CREATE TABLE media_files (
+                    id TEXT PRIMARY KEY,
+                    source_share_id TEXT NOT NULL,
+                    source_path TEXT NOT NULL,
+                    original_name TEXT NOT NULL,
+                    size INTEGER NOT NULL,
+                    extension TEXT NOT NULL,
+                    media_type INTEGER NOT NULL,
+                    captured_at_utc TEXT NULL,
+                    timestamp_source TEXT NULL,
+                    timezone_inferred INTEGER NOT NULL,
+                    sha256 TEXT NULL,
+                    first_seen_at_utc TEXT NOT NULL,
+                    last_seen_at_utc TEXT NOT NULL
+                );
+                INSERT INTO media_files VALUES (
+                    $id, 'share', '/source/photo.jpg', 'photo.jpg', 5, '.jpg', 0,
+                    '2026-08-10T10:00:00Z', 'DateTimeOriginal', 0, NULL,
+                    '2026-08-20T10:00:00Z', '2026-08-20T10:00:00Z');
+                """;
+            command.Parameters.AddWithValue("$id", mediaId);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await new SqliteDatabaseInitializer(factory).InitializeAsync();
+
+        await using var verify = await factory.OpenAsync();
+        await using var mediaCommand = verify.CreateCommand();
+        mediaCommand.CommandText = "SELECT original_name, source_last_write_at_utc FROM media_files WHERE id=$id;";
+        mediaCommand.Parameters.AddWithValue("$id", mediaId);
+        await using var reader = await mediaCommand.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal("photo.jpg", reader.GetString(0));
+        Assert.True(reader.IsDBNull(1));
     }
 
     [Fact]

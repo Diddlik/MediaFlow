@@ -13,6 +13,7 @@ public static class RoutingEndpoints
             int? limit,
             IShareRepository shares,
             RoutingPreviewService routing,
+            IRuntimeSettingsStore runtimeSettings,
             CancellationToken ct) =>
         {
             var share = await shares.GetAsync(id, ct);
@@ -24,7 +25,12 @@ public static class RoutingEndpoints
 
             try
             {
-                var items = await routing.PreviewAsync(share, Math.Clamp(limit ?? 2000, 1, 2000), ct);
+                var settings = await runtimeSettings.GetAsync(ct);
+                var items = await routing.PreviewAsync(
+                    share,
+                    Math.Clamp(limit ?? 2000, 1, 2000),
+                    ct,
+                    settings.MaxParallelMetadataReads);
                 return Results.Ok(new
                 {
                     share.Id,

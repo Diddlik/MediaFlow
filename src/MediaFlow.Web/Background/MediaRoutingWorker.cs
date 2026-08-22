@@ -35,6 +35,7 @@ public sealed class MediaRoutingWorker(
                         clock.UtcNow,
                         result.SourceShares,
                         result.Matched,
+                        result.WouldMove,
                         result.Executed,
                         result.Skipped,
                         result.Errors);
@@ -62,6 +63,7 @@ public sealed class MediaRoutingWorker(
         CancellationToken cancellationToken)
     {
         var matched = 0;
+        var wouldMove = 0;
         var executed = 0;
         var skipped = 0;
         var errors = 0;
@@ -79,7 +81,13 @@ public sealed class MediaRoutingWorker(
                 items = await routing.PreviewAsync(
                     sourceShare,
                     settings.MaxFilesPerSharePerCycle,
-                    cancellationToken);
+                    cancellationToken,
+                    settings.MaxParallelMetadataReads,
+                    progress => status.Progress(
+                        sourceShare.Name,
+                        progress.Phase,
+                        progress.Processed,
+                        progress.Total));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
             {
@@ -92,6 +100,7 @@ public sealed class MediaRoutingWorker(
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 matched++;
+                status.MatchFound();
 
                 if (!settings.AllowFilesystemTimestampFallback &&
                     string.Equals(item.MediaFile.TimestampSource, "FileLastWriteTimeUtc", StringComparison.Ordinal))
@@ -102,6 +111,9 @@ public sealed class MediaRoutingWorker(
                         item.MediaFile.SourcePath);
                     continue;
                 }
+
+                wouldMove++;
+                status.WouldMoveFound();
 
                 if (settings.DryRun)
                 {
@@ -142,12 +154,13 @@ public sealed class MediaRoutingWorker(
             }
         }
 
-        return new CycleResult(sourceShares.Length, matched, executed, skipped, errors);
+        return new CycleResult(sourceShares.Length, matched, wouldMove, executed, skipped, errors);
     }
 
     private sealed record CycleResult(
         int SourceShares,
         int Matched,
+        int WouldMove,
         int Executed,
         int Skipped,
         int Errors);

@@ -4,7 +4,7 @@ namespace MediaFlow.Infrastructure.Persistence;
 
 public sealed class SqliteDatabaseInitializer(SqliteConnectionFactory connectionFactory) : IDatabaseInitializer
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     private static readonly IReadOnlyList<SqliteMigration> Migrations =
     [
@@ -109,6 +109,12 @@ public sealed class SqliteDatabaseInitializer(SqliteConnectionFactory connection
 
             CREATE INDEX IF NOT EXISTS ix_operations_media_state ON operations(media_file_id, state);
             CREATE INDEX IF NOT EXISTS ix_operations_updated ON operations(updated_at_utc DESC);
+            """),
+        new SqliteMigration(
+            2,
+            "media-source-last-write",
+            """
+            ALTER TABLE media_files ADD COLUMN source_last_write_at_utc TEXT NULL;
             """)
     ];
 

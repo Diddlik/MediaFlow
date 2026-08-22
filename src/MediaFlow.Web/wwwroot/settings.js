@@ -35,6 +35,7 @@ function applySettingsToForm(settings) {
   $('settingsAutomationEnabled').checked = settings.automationEnabled;
   $('settingsInterval').value = settings.reconciliationIntervalSeconds;
   $('settingsMaxFiles').value = settings.maxFilesPerSharePerCycle;
+  $('settingsParallelMetadata').value = settings.maxParallelMetadataReads;
   $('settingsTimestampFallback').checked = settings.allowFilesystemTimestampFallback;
   $('settingsFreeSpaceReserve').value = Math.round(settings.minimumFreeSpaceReserveBytes / 1048576);
   $('settingsAutomaticImageUpdates').checked = settings.automaticImageUpdatesEnabled;
@@ -52,6 +53,7 @@ function settingsFromForm(overrides = {}) {
     automationEnabled: $('settingsAutomationEnabled').checked,
     reconciliationIntervalSeconds: Number($('settingsInterval').value),
     maxFilesPerSharePerCycle: Number($('settingsMaxFiles').value),
+    maxParallelMetadataReads: Number($('settingsParallelMetadata').value),
     allowFilesystemTimestampFallback: $('settingsTimestampFallback').checked,
     minimumFreeSpaceReserveBytes: Number($('settingsFreeSpaceReserve').value) * 1048576,
     automaticImageUpdatesEnabled: $('settingsAutomaticImageUpdates').checked,
@@ -193,7 +195,7 @@ async function loadAutomationStatus() {
       const error = automation.lastError ? ` · last error: ${automation.lastError}` : '';
       target.textContent = `${enabled} · ${mode} · last cycle ${completed} · `
         + `${automation.lastSourceShares} sources · ${automation.lastMatched} matched · `
-        + `${automation.lastExecuted} executed · ${automation.lastSkipped} skipped · `
+        + `${automation.lastWouldMove} would move · ${automation.lastExecuted} executed · ${automation.lastSkipped} skipped · `
         + `${automation.lastErrors} errors${error} · ${formatStorageStatus(storage)}`;
     }
 
@@ -363,9 +365,13 @@ $('settingsAutomaticImageUpdates').addEventListener('change', async () => {
 
 /* Boot ---------------------------------------------------------------------- */
 
+async function pollAutomationStatus() {
+  await loadAutomationStatus();
+  setTimeout(pollAutomationStatus, automationInfo?.cycleRunning ? 2000 : 5000);
+}
+
 loadRuntimeSettings();
-loadAutomationStatus();
-setInterval(loadAutomationStatus, 15000);
+pollAutomationStatus();
 settingsRequest('/api/v1/updates').then(renderImageUpdate).catch(() => {
   $('versionRunning').textContent = 'unknown';
 });

@@ -3,6 +3,7 @@ using MediaFlow.Application.Services;
 using MediaFlow.Core.Domain;
 using MediaFlow.Infrastructure;
 using MediaFlow.Infrastructure.Persistence;
+using System.Collections.Concurrent;
 
 namespace MediaFlow.Tests;
 
@@ -70,6 +71,56 @@ public sealed class RoutingPreviewServiceTests : IDisposable
         Assert.Equal("001.jpg", next.MediaFile.OriginalName);
     }
 
+    [Fact]
+    public async Task PreviewAsync_ReusesMetadataUntilSourceChanges()
+    {
+        var sourcePath = Directory.CreateDirectory(Path.Combine(root, "cache-source")).FullName;
+        var filePath = Path.Combine(sourcePath, "photo.jpg");
+        File.WriteAllText(filePath, "photo");
+        var factory = new SqliteConnectionFactory(Path.Combine(root, "cache.db"));
+        await new SqliteDatabaseInitializer(factory).InitializeAsync();
+        var mediaFiles = new SqliteMediaFileRepository(factory);
+        var shares = new SqliteShareRepository(factory);
+        var source = new Share { Name = "Phone", Path = sourcePath, Role = ShareRole.Source, StabilitySeconds = 0 };
+        await shares.UpsertAsync(source);
+        var clock = new MutableClock(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        var extractor = new CountingMetadataExtractor(clock);
+        var service = CreateService(factory, mediaFiles, new SqliteMediaEventRepository(factory), new SqliteSourceGroupRepository(factory), shares, clock, extractor);
+
+        await service.PreviewAsync(source, 1);
+        clock.UtcNow = clock.UtcNow.AddMinutes(1);
+        await service.PreviewAsync(source, 1);
+
+        Assert.Equal(1, extractor.Calls);
+
+        File.SetLastWriteTimeUtc(filePath, clock.UtcNow.AddMinutes(1).UtcDateTime);
+        await service.PreviewAsync(source, 1);
+        Assert.Equal(2, extractor.Calls);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_BoundsParallelMetadataReadsAndReportsProgress()
+    {
+        var sourcePath = Directory.CreateDirectory(Path.Combine(root, "parallel-source")).FullName;
+        foreach (var name in new[] { "1.jpg", "2.jpg", "3.jpg", "4.jpg" })
+            File.WriteAllText(Path.Combine(sourcePath, name), name);
+        var factory = new SqliteConnectionFactory(Path.Combine(root, "parallel.db"));
+        await new SqliteDatabaseInitializer(factory).InitializeAsync();
+        var mediaFiles = new SqliteMediaFileRepository(factory);
+        var shares = new SqliteShareRepository(factory);
+        var source = new Share { Name = "Phone", Path = sourcePath, Role = ShareRole.Source, StabilitySeconds = 0 };
+        await shares.UpsertAsync(source);
+        var clock = new MutableClock(new DateTimeOffset(2026, 8, 20, 12, 0, 0, TimeSpan.Zero));
+        var extractor = new CountingMetadataExtractor(clock, delayMilliseconds: 30);
+        var progress = new ConcurrentQueue<RoutingPreviewProgress>();
+        var service = CreateService(factory, mediaFiles, new SqliteMediaEventRepository(factory), new SqliteSourceGroupRepository(factory), shares, clock, extractor);
+
+        await service.PreviewAsync(source, 4, maxParallelMetadataReads: 2, progress: progress.Enqueue);
+
+        Assert.Equal(2, extractor.MaxConcurrent);
+        Assert.Contains(progress, item => item.Phase == "Matching events" && item.Processed == 4 && item.Total == 4);
+    }
+
     public void Dispose()
     {
         try { Directory.Delete(root, recursive: true); } catch { }
@@ -81,9 +132,10 @@ public sealed class RoutingPreviewServiceTests : IDisposable
         IMediaEventRepository events,
         ISourceGroupRepository groups,
         IShareRepository shares,
-        IClock clock) => new(
+        IClock clock,
+        IMediaMetadataExtractor? extractor = null) => new(
             new ShareDiscoveryService(new LocalFileSystemGateway(), clock),
-            new FixedMetadataExtractor(clock),
+            extractor ?? new FixedMetadataExtractor(clock),
             mediaFiles,
             events,
             groups,
@@ -112,5 +164,39 @@ public sealed class RoutingPreviewServiceTests : IDisposable
     private sealed class MutableClock(DateTimeOffset utcNow) : IClock
     {
         public DateTimeOffset UtcNow { get; set; } = utcNow;
+    }
+
+    private sealed class CountingMetadataExtractor(IClock clock, int delayMilliseconds = 0) : IMediaMetadataExtractor
+    {
+        private int _active;
+        private int _calls;
+        private int _maxConcurrent;
+
+        public int Calls => _calls;
+        public int MaxConcurrent => _maxConcurrent;
+
+        public async Task<MediaMetadata> ExtractAsync(
+            Share share,
+            string path,
+            MediaType mediaType,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _calls);
+            var active = Interlocked.Increment(ref _active);
+            int observed;
+            do
+            {
+                observed = _maxConcurrent;
+            } while (active > observed && Interlocked.CompareExchange(ref _maxConcurrent, active, observed) != observed);
+            try
+            {
+                if (delayMilliseconds > 0) await Task.Delay(delayMilliseconds, cancellationToken);
+                return new MediaMetadata(clock.UtcNow, "DateTimeOriginal", false, null, null, null, null, null, "image/jpeg");
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _active);
+            }
+        }
     }
 }
