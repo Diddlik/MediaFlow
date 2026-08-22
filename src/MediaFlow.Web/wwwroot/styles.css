@@ -102,10 +102,7 @@ code, .mono { font-family: var(--mono); }
 }
 
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
-.brand-mark {
-  width: 24px; height: 24px; border-radius: 7px; flex: none;
-  background: linear-gradient(140deg, var(--acc), var(--accline));
-}
+.brand-mark { width: 24px; height: 24px; flex: none; display: block; }
 .brand-name { font-weight: 600; font-size: 15.5px; letter-spacing: -.015em; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }

@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>MediaFlow</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="/styles.css" />
@@ -21,7 +22,22 @@
   <div class="app">
     <aside class="side">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true"></div>
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <defs>
+            <linearGradient id="mfMark" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="var(--acctxt)" />
+              <stop offset="1" stop-color="var(--acc)" />
+            </linearGradient>
+          </defs>
+          <rect width="24" height="24" rx="7" fill="url(#mfMark)" />
+          <!-- Three sources converge into one verified destination. -->
+          <g fill="none" stroke="var(--on)" stroke-width="1.9" stroke-linecap="round">
+            <path d="M5 7.2h2.6c2.9 0 3.4 4.8 5.9 4.8" />
+            <path d="M5 12h10.6" />
+            <path d="M5 16.8h2.6c2.9 0 3.4-4.8 5.9-4.8" />
+          </g>
+          <circle cx="17.6" cy="12" r="2.1" fill="var(--on)" />
+        </svg>
         <div class="brand-name">MediaFlow</div>
       </div>
 
