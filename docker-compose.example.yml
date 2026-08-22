@@ -1,7 +1,7 @@
 services:
-  mediaflow:
-    image: ${MEDIAFLOW_IMAGE:-ghcr.io/diddlik/mediaflow:latest}
-    container_name: mediaflow
+  momentferry:
+    image: ${MOMENTFERRY_IMAGE:-ghcr.io/diddlik/momentferry:latest}
+    container_name: momentferry
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -10,29 +10,29 @@ services:
 
       # Initial defaults. After settings are saved in the Web UI,
       # ./data/runtime-settings.json takes precedence for these runtime values.
-      MediaFlow__DryRun: "true"
-      MediaFlow__Automation__Enabled: "true"
-      MediaFlow__ReconciliationIntervalSeconds: "300"
-      MediaFlow__Automation__MaxFilesPerSharePerCycle: "200"
-      MediaFlow__Automation__AllowFilesystemTimestampFallback: "false"
-      MediaFlow__MinimumFreeSpaceReserveBytes: "536870912"
+      MomentFerry__DryRun: "true"
+      MomentFerry__Automation__Enabled: "true"
+      MomentFerry__ReconciliationIntervalSeconds: "300"
+      MomentFerry__Automation__MaxFilesPerSharePerCycle: "200"
+      MomentFerry__Automation__AllowFilesystemTimestampFallback: "false"
+      MomentFerry__MinimumFreeSpaceReserveBytes: "536870912"
 
       # Optional MQTT integration. Disabled by default.
-      MediaFlow__Mqtt__Enabled: "false"
-      MediaFlow__Mqtt__Host: "192.168.1.10"
-      MediaFlow__Mqtt__Port: "1883"
-      MediaFlow__Mqtt__ClientId: "mediaflow"
-      MediaFlow__Mqtt__BaseTopic: "mediaflow"
-      MediaFlow__Mqtt__UseTls: "false"
-      MediaFlow__Mqtt__ReconnectSeconds: "5"
-      # MediaFlow__Mqtt__Username: "mediaflow"
-      # MediaFlow__Mqtt__Password: "change-me"
+      MomentFerry__Mqtt__Enabled: "false"
+      MomentFerry__Mqtt__Host: "192.168.1.10"
+      MomentFerry__Mqtt__Port: "1883"
+      MomentFerry__Mqtt__ClientId: "momentferry"
+      MomentFerry__Mqtt__BaseTopic: "momentferry"
+      MomentFerry__Mqtt__UseTls: "false"
+      MomentFerry__Mqtt__ReconnectSeconds: "5"
+      # MomentFerry__Mqtt__Username: "momentferry"
+      # MomentFerry__Mqtt__Password: "change-me"
 
     volumes:
       # SQLite database and persistent runtime settings.
       - ./data:/app/data
 
-      # Example source shares. The sync software is irrelevant to MediaFlow.
+      # Example source shares. The sync software is irrelevant to MomentFerry.
       - /volume1/photos/pavel:/sources/pavel
       - /volume1/photos/elena:/sources/elena
       - /volume1/photos/elisabeth:/sources/elisabeth
@@ -49,16 +49,16 @@ services:
 
     labels:
       - "com.centurylinklabs.watchtower.enable=true"
-      - "com.centurylinklabs.watchtower.scope=mediaflow"
+      - "com.centurylinklabs.watchtower.scope=momentferry"
 
   # Optional update companion. Set the same strong token in both services:
-  # MediaFlow__Updates__WatchtowerUrl=http://mediaflow-updater:8080
-  # MediaFlow__Updates__WatchtowerToken=<token>
-  # mediaflow-updater:
+  # MomentFerry__Updates__WatchtowerUrl=http://momentferry-updater:8080
+  # MomentFerry__Updates__WatchtowerToken=<token>
+  # momentferry-updater:
   #   image: containrrr/watchtower:1.7.1
-  #   container_name: mediaflow-updater
+  #   container_name: momentferry-updater
   #   restart: unless-stopped
-  #   command: --http-api-update --label-enable --scope mediaflow
+  #   command: --http-api-update --label-enable --scope momentferry
   #   environment:
   #     WATCHTOWER_HTTP_API_TOKEN: <same-token>
   #   volumes:

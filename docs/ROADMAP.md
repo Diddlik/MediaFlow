@@ -1,4 +1,4 @@
-# MediaFlow Roadmap
+# MomentFerry Roadmap
 
 ## v0.1 — Safety prototype
 
@@ -90,7 +90,7 @@
 - [x] manual **Install update** action with explicit confirmation and visible result
 - [x] opt-in automatic stable-image updates; manual mode remains the default
 - [x] persist update mode and expose the last check/update result in the Web UI
-- [x] narrow updater-companion integration; do not expose the Docker socket to MediaFlow
+- [x] narrow updater-companion integration; do not expose the Docker socket to MomentFerry
 - [x] record a replacement as completed after the expected version starts healthy
 - [x] automated tests for version selection, exact confirmation, companion failure and healthy restart reporting
 - [x] rollback policy finalized: retain the prior image and use deterministic operator-triggered rollback; no second privileged Docker-socket service

@@ -1,10 +1,10 @@
-# MediaFlow — Implementation Specification
+# MomentFerry — Implementation Specification
 
 ## 1. Purpose
 
-MediaFlow is a self-hosted service that safely routes media files between filesystem folders based on metadata, events and configurable rules.
+MomentFerry is a self-hosted service that safely routes media files between filesystem folders based on metadata, events and configurable rules.
 
-MediaFlow does **not** implement synchronization itself. It works on filesystem folders that may already be synchronized by Resilio Sync, Syncthing, Nextcloud clients, FolderSync, SMB/NFS workflows, rsync, or any other mechanism.
+MomentFerry does **not** implement synchronization itself. It works on filesystem folders that may already be synchronized by Resilio Sync, Syncthing, Nextcloud clients, FolderSync, SMB/NFS workflows, rsync, or any other mechanism.
 
 The initial motivating scenario is a family vacation:
 
@@ -20,7 +20,7 @@ The same engine should later support birthdays, weddings, trips, camera imports,
 
 ## 2. Design principles
 
-1. **Filesystem Shares are the integration boundary.** MediaFlow does not need sync-provider APIs.
+1. **Filesystem Shares are the integration boundary.** MomentFerry does not need sync-provider APIs.
 2. **Safe Move is the default destructive operation.** Copy → Verify → Commit → Delete.
 3. **Capture time determines event membership.** Arrival time is only a fallback signal.
 4. **Unknown or ambiguous state always preserves the source.**
@@ -37,7 +37,7 @@ The same engine should later support birthdays, weddings, trips, camera imports,
 
 ### 3.1 Share
 
-A Share is a filesystem path visible inside the MediaFlow container.
+A Share is a filesystem path visible inside the MomentFerry container.
 
 Properties:
 
@@ -68,7 +68,7 @@ Ignore:
 StabilitySeconds: 30
 ```
 
-MediaFlow must not care which program synchronizes this path.
+MomentFerry must not care which program synchronizes this path.
 
 ### 3.2 Share presets
 
@@ -173,7 +173,7 @@ Typical patterns:
 .thumbnails/**
 ```
 
-Application-generated folders such as `.mediaflow-staging` must always be excluded from source discovery.
+Application-generated folders such as `.momentferry-staging` must always be excluded from source discovery.
 
 ### File stability
 
@@ -303,12 +303,12 @@ Copy and verify now; optionally delete the source after a configured retention i
 Each destination Share should use a staging folder on the same destination filesystem where possible:
 
 ```text
-<destination>/.mediaflow-staging/
+<destination>/.momentferry-staging/
 ```
 
 Staging filenames should use operation IDs rather than final user-visible names.
 
-On startup MediaFlow must reconcile orphaned staging files with persisted operations.
+On startup MomentFerry must reconcile orphaned staging files with persisted operations.
 
 ---
 
@@ -329,7 +329,7 @@ Initial strategies:
 - `SkipAndRecord`
 - `SafeMoveToExisting`
 
-`SafeMoveToExisting` is useful when the exact same media arrives from several synchronized devices: if an identical verified destination already exists, MediaFlow may record that destination and remove the duplicate source according to policy.
+`SafeMoveToExisting` is useful when the exact same media arrives from several synchronized devices: if an identical verified destination already exists, MomentFerry may record that destination and remove the duplicate source according to policy.
 
 Future enhancements may include perceptual image hashes, video fingerprints and Live Photo pairing.
 
@@ -578,7 +578,7 @@ Never auto-delete quarantined sources.
 
 Dry Run is mandatory for v1.
 
-When enabled MediaFlow should:
+When enabled MomentFerry should:
 
 - discover files;
 - read metadata;
@@ -704,10 +704,10 @@ MQTT is optional.
 Suggested topics:
 
 ```text
-mediaflow/events/command
-mediaflow/events/state
-mediaflow/status
-mediaflow/activity
+momentferry/events/command
+momentferry/events/state
+momentferry/status
+momentferry/activity
 ```
 
 Example command:
@@ -728,7 +728,7 @@ Suggested HA concepts:
 - event name;
 - start/stop actions;
 - photo/video counters;
-- MediaFlow health sensor.
+- MomentFerry health sensor.
 
 ---
 
@@ -785,9 +785,9 @@ Target a single-container v1 where practical.
 
 ```yaml
 services:
-  mediaflow:
-    image: ghcr.io/OWNER/mediaflow:latest
-    container_name: mediaflow
+  momentferry:
+    image: ghcr.io/OWNER/momentferry:latest
+    container_name: momentferry
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -808,24 +808,24 @@ The application should enumerate only mounted/allowed roots rather than the host
 ## 23. Suggested solution structure
 
 ```text
-MediaFlow/
+MomentFerry/
 ├── src/
-│   ├── MediaFlow.Core/
-│   ├── MediaFlow.Application/
-│   ├── MediaFlow.Infrastructure/
-│   ├── MediaFlow.Metadata.ExifTool/
-│   ├── MediaFlow.Web/
-│   └── MediaFlow.Worker/
+│   ├── MomentFerry.Core/
+│   ├── MomentFerry.Application/
+│   ├── MomentFerry.Infrastructure/
+│   ├── MomentFerry.Metadata.ExifTool/
+│   ├── MomentFerry.Web/
+│   └── MomentFerry.Worker/
 ├── tests/
-│   ├── MediaFlow.Core.Tests/
-│   ├── MediaFlow.Application.Tests/
-│   ├── MediaFlow.Infrastructure.Tests/
-│   └── MediaFlow.IntegrationTests/
+│   ├── MomentFerry.Core.Tests/
+│   ├── MomentFerry.Application.Tests/
+│   ├── MomentFerry.Infrastructure.Tests/
+│   └── MomentFerry.IntegrationTests/
 ├── docs/
 ├── examples/
 ├── Dockerfile
 ├── docker-compose.yml
-└── MediaFlow.sln
+└── MomentFerry.sln
 ```
 
 Avoid sync-provider abstractions in v1. The filesystem Share is the boundary.
@@ -938,7 +938,7 @@ Tests must prove:
 
 V1 is acceptable when a user can:
 
-1. run MediaFlow with Docker Compose;
+1. run MomentFerry with Docker Compose;
 2. open the Web UI;
 3. configure multiple source Shares and one destination Share;
 4. configure ignore patterns and stability time;

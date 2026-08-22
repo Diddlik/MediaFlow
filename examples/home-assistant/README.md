@@ -1,10 +1,10 @@
 # Home Assistant integration
 
-Home Assistant is optional. MediaFlow can be controlled over REST or MQTT. Both interfaces use the same event-control service, so start/stop behavior is identical.
+Home Assistant is optional. MomentFerry can be controlled over REST or MQTT. Both interfaces use the same event-control service, so start/stop behavior is identical.
 
-## 1. Create the MediaFlow configuration once
+## 1. Create the MomentFerry configuration once
 
-In the MediaFlow Web UI create:
+In the MomentFerry Web UI create:
 
 1. the source Shares for the phones;
 2. one shared destination Share;
@@ -33,8 +33,8 @@ Replace the URL and the two IDs with your installation values.
 
 ```yaml
 rest_command:
-  mediaflow_vacation_start:
-    url: "http://MEDIAFLOW_HOST:8080/api/v1/events/quick-start"
+  momentferry_vacation_start:
+    url: "http://MOMENTFERRY_HOST:8080/api/v1/events/quick-start"
     method: POST
     content_type: "application/json"
     payload: >-
@@ -49,8 +49,8 @@ rest_command:
         "duplicateStrategy": "SafeMoveToExisting"
       }
 
-  mediaflow_vacation_stop:
-    url: "http://MEDIAFLOW_HOST:8080/api/v1/events/quick-stop"
+  momentferry_vacation_stop:
+    url: "http://MOMENTFERRY_HOST:8080/api/v1/events/quick-stop"
     method: POST
     content_type: "application/json"
     payload: >-
@@ -61,61 +61,61 @@ rest_command:
 
 ```yaml
 automation:
-  - alias: "MediaFlow - start vacation (REST)"
+  - alias: "MomentFerry - start vacation (REST)"
     mode: single
     triggers:
       - trigger: state
         entity_id: input_boolean.vacation_mode
         to: "on"
     actions:
-      - action: rest_command.mediaflow_vacation_start
+      - action: rest_command.momentferry_vacation_start
 
-  - alias: "MediaFlow - stop vacation (REST)"
+  - alias: "MomentFerry - stop vacation (REST)"
     mode: single
     triggers:
       - trigger: state
         entity_id: input_boolean.vacation_mode
         to: "off"
     actions:
-      - action: rest_command.mediaflow_vacation_stop
+      - action: rest_command.momentferry_vacation_stop
 ```
 
 # Option B — MQTT
 
-Enable MQTT in the MediaFlow Docker configuration first:
+Enable MQTT in the MomentFerry Docker configuration first:
 
 ```yaml
-MediaFlow__Mqtt__Enabled: "true"
-MediaFlow__Mqtt__Host: "192.168.1.10"
-MediaFlow__Mqtt__Port: "1883"
-MediaFlow__Mqtt__BaseTopic: "mediaflow"
-# MediaFlow__Mqtt__Username: "mediaflow"
-# MediaFlow__Mqtt__Password: "..."
+MomentFerry__Mqtt__Enabled: "true"
+MomentFerry__Mqtt__Host: "192.168.1.10"
+MomentFerry__Mqtt__Port: "1883"
+MomentFerry__Mqtt__BaseTopic: "momentferry"
+# MomentFerry__Mqtt__Username: "momentferry"
+# MomentFerry__Mqtt__Password: "..."
 ```
 
-MediaFlow subscribes to:
+MomentFerry subscribes to:
 
 ```text
-mediaflow/events/command
+momentferry/events/command
 ```
 
 and publishes command results to:
 
 ```text
-mediaflow/events/state
+momentferry/events/state
 ```
 
 A retained service status is published to:
 
 ```text
-mediaflow/status
+momentferry/status
 ```
 
 ### Home Assistant MQTT automations
 
 ```yaml
 automation:
-  - alias: "MediaFlow - start vacation (MQTT)"
+  - alias: "MomentFerry - start vacation (MQTT)"
     mode: single
     triggers:
       - trigger: state
@@ -124,7 +124,7 @@ automation:
     actions:
       - action: mqtt.publish
         data:
-          topic: mediaflow/events/command
+          topic: momentferry/events/command
           payload: >-
             {
               "action": "quick-start",
@@ -137,7 +137,7 @@ automation:
               "duplicateStrategy": "SafeMoveToExisting"
             }
 
-  - alias: "MediaFlow - stop vacation (MQTT)"
+  - alias: "MomentFerry - stop vacation (MQTT)"
     mode: single
     triggers:
       - trigger: state
@@ -146,7 +146,7 @@ automation:
     actions:
       - action: mqtt.publish
         data:
-          topic: mediaflow/events/command
+          topic: momentferry/events/command
           payload: >-
             {
               "action": "quick-stop",
@@ -168,4 +168,4 @@ MQTT also supports commands for an existing event ID:
 
 ## Safety note
 
-MediaFlow ships with Dry Run enabled. In Dry Run mode the background worker discovers, indexes and matches media, but it will not copy, move or delete files. MQTT controls event windows only; it does not bypass the Dry Run / Live transfer safety gate.
+MomentFerry ships with Dry Run enabled. In Dry Run mode the background worker discovers, indexes and matches media, but it will not copy, move or delete files. MQTT controls event windows only; it does not bypass the Dry Run / Live transfer safety gate.

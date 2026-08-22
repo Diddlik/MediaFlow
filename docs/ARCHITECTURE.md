@@ -1,21 +1,21 @@
-# MediaFlow Architecture
+# MomentFerry Architecture
 
 ## System context
 
 ```text
  Phone A ──sync software──> Source Share A ─┐
- Phone B ──sync software──> Source Share B ─┼─> MediaFlow ─> Shared Destination Share
+ Phone B ──sync software──> Source Share B ─┼─> MomentFerry ─> Shared Destination Share
  Phone C ──sync software──> Source Share C ─┘                    │
                                                                 └─sync software─> Phones
 ```
 
-The sync software is outside the MediaFlow boundary.
+The sync software is outside the MomentFerry boundary.
 
 ## Logical components
 
 ```text
 ┌────────────────────────────────────────────────────┐
-│                    MediaFlow                       │
+│                    MomentFerry                       │
 │                                                    │
 │  Web UI / REST / MQTT                              │
 │          │                                         │
@@ -37,13 +37,13 @@ The sync software is outside the MediaFlow boundary.
 ## Dependency direction
 
 ```text
-MediaFlow.Core
+MomentFerry.Core
       ↑
-MediaFlow.Application
+MomentFerry.Application
       ↑
-MediaFlow.Infrastructure
+MomentFerry.Infrastructure
       ↑
-MediaFlow.Web / MediaFlow.Worker
+MomentFerry.Web / MomentFerry.Worker
 ```
 
 Core must not depend on EF Core, ExifTool, MQTT or ASP.NET.
@@ -52,7 +52,7 @@ Core must not depend on EF Core, ExifTool, MQTT or ASP.NET.
 
 The filesystem path is the primary integration contract.
 
-MediaFlow should not need to know whether a Share is synchronized with:
+MomentFerry should not need to know whether a Share is synchronized with:
 
 - Resilio Sync;
 - Syncthing;

@@ -1,12 +1,14 @@
-# MediaFlow
+# MomentFerry
 
-MediaFlow is a self-hosted media routing and collection service for synchronized folders.
+MomentFerry — safely bringing your moments together.
 
-It watches filesystem shares, identifies photos and videos from metadata, matches them to capture-time events, and safely routes them into shared destination folders. MediaFlow is deliberately sync-tool agnostic: Resilio Sync, Syncthing, Nextcloud clients, FolderSync, SMB uploaders, rsync, or another tool may synchronize the folders. MediaFlow only works with the resulting filesystem paths.
+MomentFerry is a self-hosted media routing and collection service for synchronized folders.
+
+It watches filesystem shares, identifies photos and videos from metadata, matches them to capture-time events, and safely routes them into shared destination folders. MomentFerry is deliberately sync-tool agnostic: Resilio Sync, Syncthing, Nextcloud clients, FolderSync, SMB uploaders, rsync, or another tool may synchronize the folders. MomentFerry only works with the resulting filesystem paths.
 
 ## Primary use case
 
-Several phones synchronize their camera folders to a NAS. During a vacation or another event, MediaFlow collects media captured inside the event window into a common destination folder. Existing sync software can then distribute that shared folder back to all participating phones.
+Several phones synchronize their camera folders to a NAS. During a vacation or another event, MomentFerry collects media captured inside the event window into a common destination folder. Existing sync software can then distribute that shared folder back to all participating phones.
 
 Late synchronization is supported: a photo arriving after an event has ended is still matched using its capture timestamp.
 
@@ -25,9 +27,9 @@ The default destructive operation is **Safe Move**:
 9. Persist `DestinationCommitted` and `SourceFinalizePending`.
 10. Delete the source only after the committed destination is verified.
 
-If MediaFlow cannot prove the destination is safe, the source is preserved. Incomplete operations are reconciled after restart. Transfers for the same media file are serialized in-process to prevent concurrent duplicate execution.
+If MomentFerry cannot prove the destination is safe, the source is preserved. Incomplete operations are reconciled after restart. Transfers for the same media file are serialized in-process to prevent concurrent duplicate execution.
 
-Real filesystem copies keep a **512 MiB free-space reserve in addition to the file being copied** whenever free capacity can be determined. If capacity cannot be determined, MediaFlow reports it as unknown rather than guessing.
+Real filesystem copies keep a **512 MiB free-space reserve in addition to the file being copied** whenever free capacity can be determined. If capacity cannot be determined, MomentFerry reports it as unknown rather than guessing.
 
 **Dry Run is enabled by default.** Live transfers require an explicit confirmation in the Web UI.
 
@@ -71,8 +73,8 @@ Copy `docker-compose.example.yml` and adapt the NAS paths:
 
 ```yaml
 services:
-  mediaflow:
-    image: ghcr.io/diddlik/mediaflow:latest
+  momentferry:
+    image: ghcr.io/diddlik/momentferry:latest
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -131,17 +133,17 @@ POST /api/v1/recovery
 
 ## MQTT
 
-MQTT is optional and disabled by default. Configure it with `MediaFlow__Mqtt__*` environment variables. MediaFlow subscribes to:
+MQTT is optional and disabled by default. Configure it with `MomentFerry__Mqtt__*` environment variables. MomentFerry subscribes to:
 
 ```text
-mediaflow/events/command
+momentferry/events/command
 ```
 
 and publishes responses/status to:
 
 ```text
-mediaflow/events/state
-mediaflow/status
+momentferry/events/state
+momentferry/status
 ```
 
 Supported actions are `start`, `stop`, `quick-start`, and `quick-stop`. MQTT controls event windows only and never bypasses the Dry Run / Live transfer safety gate. See the Home Assistant example for payloads.
@@ -149,10 +151,10 @@ Supported actions are `start`, `stop`, `quick-start`, and `quick-stop`. MQTT con
 ## Development
 
 ```bash
-dotnet restore MediaFlow.sln
-dotnet build MediaFlow.sln -c Release
-dotnet test MediaFlow.sln -c Release
-docker build -t mediaflow:dev .
+dotnet restore MomentFerry.sln
+dotnet build MomentFerry.sln -c Release
+dotnet test MomentFerry.sln -c Release
+docker build -t momentferry:dev .
 ```
 
 CI validates the Release build, automated tests and Docker image. The runtime image contains ExifTool and a container healthcheck.

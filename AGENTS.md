@@ -66,14 +66,14 @@ If any `[TO FILL]` entry remains, complete this onboarding before implementing t
 
 - Purpose: Self-hosted service that discovers synchronized photos and videos, matches capture timestamps to events, and safely routes media from source shares to shared destinations.
 - Primary languages and runtimes: C# on .NET 10 / ASP.NET Core; browser UI in plain JavaScript, HTML, and CSS; SQLite persistence.
-- Important entry points: `src/MediaFlow.Web/Program.cs` composes the API and workers; `src/MediaFlow.Web/wwwroot/app.js` drives the Web UI; `src/MediaFlow.Web/Background/MediaRoutingWorker.cs` runs automated routing.
-- Build command: `dotnet build MediaFlow.sln -c Release --no-restore -m:1` after `dotnet restore MediaFlow.sln`.
-- Test command: `dotnet test MediaFlow.sln -c Release --no-build -m:1` after a successful Release build.
-- Single test command: `dotnet test tests/MediaFlow.Tests/MediaFlow.Tests.csproj -c Release --no-build -m:1 --filter FullyQualifiedName~SafeTransferServiceTests`.
-- Lint and format command: `dotnet format MediaFlow.sln --verify-no-changes --no-restore`.
-- Local run command: `dotnet run --project src/MediaFlow.Web/MediaFlow.Web.csproj -c Release --no-build --urls http://127.0.0.1:5080`.
+- Important entry points: `src/MomentFerry.Web/Program.cs` composes the API and workers; `src/MomentFerry.Web/wwwroot/app.js` drives the Web UI; `src/MomentFerry.Web/Background/MediaRoutingWorker.cs` runs automated routing.
+- Build command: `dotnet build MomentFerry.sln -c Release --no-restore -m:1` after `dotnet restore MomentFerry.sln`.
+- Test command: `dotnet test MomentFerry.sln -c Release --no-build -m:1` after a successful Release build.
+- Single test command: `dotnet test tests/MomentFerry.Tests/MomentFerry.Tests.csproj -c Release --no-build -m:1 --filter FullyQualifiedName~SafeTransferServiceTests`.
+- Lint and format command: `dotnet format MomentFerry.sln --verify-no-changes --no-restore`.
+- Local run command: `dotnet run --project src/MomentFerry.Web/MomentFerry.Web.csproj -c Release --no-build --urls http://127.0.0.1:5080`.
 - Required environment: .NET 10 SDK for development; ExifTool for local metadata extraction; Docker with Compose for the supported container deployment. Mounted source and destination paths must be readable or writable according to their configured roles.
-- Module map: `MediaFlow.Core/Domain` holds entities and enums only; `MediaFlow.Application/Services` holds the routing and transfer use cases (`SafeTransferService`, `TransferCoordinator`, `RoutingPreviewService`, `OperationRecoveryService`); `MediaFlow.Infrastructure` holds SQLite repositories, ExifTool metadata, and the filesystem gateway; `MediaFlow.Web/Api` holds minimal-API endpoint groups and `MediaFlow.Web/Background` the workers.
+- Module map: `MomentFerry.Core/Domain` holds entities and enums only; `MomentFerry.Application/Services` holds the routing and transfer use cases (`SafeTransferService`, `TransferCoordinator`, `RoutingPreviewService`, `OperationRecoveryService`); `MomentFerry.Infrastructure` holds SQLite repositories, ExifTool metadata, and the filesystem gateway; `MomentFerry.Web/Api` holds minimal-API endpoint groups and `MomentFerry.Web/Background` the workers.
 - Architecture constraints: Dependencies flow from Core to Application to Infrastructure to Web. Core must not depend on ASP.NET, MQTT, ExifTool, or persistence infrastructure. Filesystem paths are the sync-tool-agnostic integration boundary. Safe Move may delete a source only after the destination is committed and its size and SHA-256 match. Bounded routing cycles use persisted `media_files.last_seen_at` values to prioritize unindexed, then least-recently evaluated files; Synology `@eaDir` metadata is excluded from discovery. The update UI treats the install-request connection drop as an expected restart, waits for the requested running version and reloads itself.
 - Generated files: `bin/`, `obj/`, local SQLite databases, `data/runtime-settings.json`, and `data/automation-status.json` are build or runtime outputs.
 - Files or directories not to edit manually: Do not edit `bin/`, `obj/`, SQLite database files, or persisted runtime settings by hand. Add schema changes through the versioned migration code documented in `docs/DATABASE-MIGRATIONS.md`.

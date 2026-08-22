@@ -1,6 +1,6 @@
 # Database migrations
 
-MediaFlow uses versioned, forward-only SQLite migrations.
+MomentFerry uses versioned, forward-only SQLite migrations.
 
 ## Schema history
 
@@ -16,7 +16,7 @@ schema_migrations (
 
 `SqliteDatabaseInitializer.CurrentSchemaVersion` is the highest schema version supported by the running application.
 
-On startup MediaFlow:
+On startup MomentFerry:
 
 1. opens the database;
 2. enables WAL mode;
@@ -32,7 +32,7 @@ This makes migration application idempotent and prevents a partially applied mig
 
 The first migration is the baseline schema and uses idempotent `CREATE TABLE/INDEX IF NOT EXISTS` statements.
 
-For an existing MediaFlow database created before `schema_migrations` existed, startup therefore:
+For an existing MomentFerry database created before `schema_migrations` existed, startup therefore:
 
 - leaves existing tables and rows intact;
 - creates any missing baseline objects;
@@ -74,7 +74,7 @@ Then:
 
 Automatic down-migrations are intentionally not supported.
 
-If a database reports a schema version newer than the running application understands, MediaFlow refuses to start rather than allowing an older binary to mutate newer persistent state.
+If a database reports a schema version newer than the running application understands, MomentFerry refuses to start rather than allowing an older binary to mutate newer persistent state.
 
 To roll back across an incompatible schema change, restore the `/app/data` backup created before the upgrade and deploy the corresponding older container image.
 
@@ -82,7 +82,7 @@ See [Backup and restore](BACKUP-RESTORE.md).
 
 ## Connection-level SQLite safety
 
-Every MediaFlow SQLite connection enables:
+Every MomentFerry SQLite connection enables:
 
 ```sql
 PRAGMA foreign_keys=ON;

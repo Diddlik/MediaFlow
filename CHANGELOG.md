@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MediaFlow are documented here.
+All notable changes to MomentFerry are documented here.
 
 The project follows semantic versioning for tagged releases. Until v1.0, breaking changes may occur in minor releases when documented explicitly.
 
@@ -28,7 +28,7 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 ### Changed
 
 - unchanged indexed media reuse their capture metadata based on source size and last-write time instead of invoking ExifTool again;
-- database schema version 2 adds `media_files.source_last_write_at_utc`; back up `/app/data` before updating because older MediaFlow versions refuse this newer schema.
+- database schema version 2 adds `media_files.source_last_write_at_utc`; back up `/app/data` before updating because older MomentFerry versions refuse this newer schema.
 
 ### Fixed
 
@@ -112,4 +112,4 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 - ambiguous/recoverable states preserve the source.
 - destination path resolution is restricted to the configured destination Share.
 - Live mode is opt-in and requires explicit confirmation.
-- older application builds refuse to mutate database schemas created by newer MediaFlow versions.
+- older application builds refuse to mutate database schemas created by newer MomentFerry versions.

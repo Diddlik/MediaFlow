@@ -3,8 +3,8 @@ WORKDIR /src
 ARG VERSION=0.0.0-dev
 
 COPY . .
-RUN dotnet restore MediaFlow.sln
-RUN dotnet publish src/MediaFlow.Web/MediaFlow.Web.csproj \
+RUN dotnet restore MomentFerry.sln
+RUN dotnet publish src/MomentFerry.Web/MomentFerry.Web.csproj \
     --configuration Release \
     --no-restore \
     -p:Version="$VERSION" \
@@ -26,4 +26,4 @@ COPY --from=build /app/publish .
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl --fail --silent --show-error http://localhost:8080/health >/dev/null || exit 1
 
-ENTRYPOINT ["dotnet", "MediaFlow.Web.dll"]
+ENTRYPOINT ["dotnet", "MomentFerry.Web.dll"]

@@ -1,6 +1,6 @@
-# Contributing to MediaFlow
+# Contributing to MomentFerry
 
-MediaFlow can perform destructive filesystem operations, so changes to routing, verification, recovery and source deletion require a higher review bar than ordinary application code.
+MomentFerry can perform destructive filesystem operations, so changes to routing, verification, recovery and source deletion require a higher review bar than ordinary application code.
 
 ## Development setup
 
@@ -13,10 +13,10 @@ Requirements:
 Build and test:
 
 ```bash
-dotnet restore MediaFlow.sln
-dotnet build MediaFlow.sln -c Release
-dotnet test MediaFlow.sln -c Release
-docker build -t mediaflow:dev .
+dotnet restore MomentFerry.sln
+dotnet build MomentFerry.sln -c Release
+dotnet test MomentFerry.sln -c Release
+docker build -t momentferry:dev .
 ```
 
 ## Architecture boundaries
@@ -24,16 +24,16 @@ docker build -t mediaflow:dev .
 Keep the dependency direction:
 
 ```text
-MediaFlow.Core
+MomentFerry.Core
       ↑
-MediaFlow.Application
+MomentFerry.Application
       ↑
-MediaFlow.Infrastructure
+MomentFerry.Infrastructure
       ↑
-MediaFlow.Web
+MomentFerry.Web
 ```
 
-Core/Application must remain independent of specific sync products. Resilio Sync, Syncthing, Nextcloud and similar tools are external to MediaFlow; filesystem Shares are the integration boundary.
+Core/Application must remain independent of specific sync products. Resilio Sync, Syncthing, Nextcloud and similar tools are external to MomentFerry; filesystem Shares are the integration boundary.
 
 ## Safety requirements
 
