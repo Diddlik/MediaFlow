@@ -6,6 +6,12 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.0.5] - 2026-08-22
+
+### Fixed
+
+- manual scans now use fast lifecycle polling, keep progress visible across in-app navigation and show a persistent completion summary even when the cycle finishes between regular status polls.
+
 ## [1.0.4] - 2026-08-22
 
 ### Added
