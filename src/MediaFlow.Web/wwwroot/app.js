@@ -22,6 +22,8 @@ let updateInfo = null;
 let currentView = 'overview';
 const backgroundTasks = new Map();
 let taskClock = null;
+let scanRequestedAt = null;
+let scanScheduleError = '';
 
 const TITLES = {
   overview: ['Overview', 'Every watched folder, the running event and anything waiting on you.'],
@@ -386,6 +388,7 @@ function renderRunningEvent() {
       </div>
       <div class="progress-track" role="progressbar" aria-label="Current automation cycle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>
     </div>` : '';
+  const scanDisabled = cycleRunning || scanRequestedAt || appInfo.automationEnabled === false;
 
   body.innerHTML = `
     <div class="row" style="align-items:baseline;gap:10px;margin-bottom:3px">
@@ -410,12 +413,74 @@ function renderRunningEvent() {
         <div class="stat-label">held</div>
       </button>
     </div>
+    <div class="event-scan-row">
+      <div>
+        <div class="kicker">Automation</div>
+        <div class="event-scan-time" id="nextScanCountdown"></div>
+      </div>
+      <button class="btn" type="button" data-scan-now ${scanDisabled ? 'disabled' : ''}>
+        ${scanRequestedAt ? 'Queued…' : cycleRunning ? 'Scanning…' : 'Scan now'}
+      </button>
+    </div>
     <div class="actions" style="margin-top:14px">
       <button class="btn btn-acc" type="button" data-event-toggle="${escapeHtml(event.id)}">
         ${running ? 'Stop event' : 'Start event'}
       </button>
       <button class="btn btn-ghost" type="button" data-view="preview">Preview routing</button>
     </div>`;
+  renderNextScanCountdown();
+}
+
+function renderNextScanCountdown() {
+  const target = $('nextScanCountdown');
+  if (!target) return;
+  if (scanScheduleError) {
+    target.textContent = scanScheduleError;
+    target.className = 'event-scan-time error';
+    return;
+  }
+  target.className = 'event-scan-time';
+  if (automationInfo?.cycleRunning) {
+    target.textContent = 'Scan in progress';
+    return;
+  }
+  if (scanRequestedAt) {
+    target.textContent = 'Manual scan queued';
+    return;
+  }
+  if (appInfo.automationEnabled === false) {
+    target.textContent = 'Automation is off';
+    return;
+  }
+  if (!automationInfo?.lastCycleCompletedAt) {
+    target.textContent = 'First scan pending';
+    return;
+  }
+
+  const next = new Date(automationInfo.lastCycleCompletedAt).getTime()
+    + Number(appInfo.reconciliationIntervalSeconds || 300) * 1000;
+  const seconds = Math.max(0, Math.ceil((next - Date.now()) / 1000));
+  if (!seconds) {
+    target.textContent = 'Next scan due now';
+    return;
+  }
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const remainder = seconds % 60;
+  target.textContent = `Next scan in ${hours ? `${hours}:` : ''}${String(minutes).padStart(hours ? 2 : 1, '0')}:${String(remainder).padStart(2, '0')}`;
+  target.title = `Scheduled for ${new Date(next).toLocaleString()}`;
+}
+
+async function triggerScanNow() {
+  if (automationInfo?.cycleRunning || scanRequestedAt || appInfo.automationEnabled === false) return;
+  scanScheduleError = '';
+  try {
+    const result = await request('/api/v1/automation/run', { method: 'POST' });
+    scanRequestedAt = result.requestedAt;
+  } catch (error) {
+    scanScheduleError = `Could not start scan · ${error.message}`;
+  }
+  renderRunningEvent();
 }
 
 function renderStorage() {
@@ -1373,6 +1438,10 @@ $('dismissOnboarding').addEventListener('click', () => {
 });
 
 document.addEventListener('click', event => {
+  if (event.target.closest('[data-scan-now]')) {
+    triggerScanNow();
+    return;
+  }
   const toggle = event.target.closest('[data-event-toggle]');
   if (!toggle) return;
   const id = toggle.dataset.eventToggle;
@@ -1385,4 +1454,5 @@ document.addEventListener('click', event => {
 
 applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 setView(location.hash.slice(1) || 'overview');
+setInterval(renderNextScanCountdown, 1000);
 load();

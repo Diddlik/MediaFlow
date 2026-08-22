@@ -79,6 +79,24 @@ public static class SettingsEndpoints
             });
         });
 
+        app.MapPost("/api/v1/automation/run", async (
+            IRuntimeSettingsStore store,
+            AutomationStatus automationStatus,
+            AutomationWakeSignal wakeSignal,
+            IClock clock,
+            CancellationToken ct) =>
+        {
+            var settings = await store.GetAsync(ct);
+            if (!settings.AutomationEnabled)
+                return Results.Conflict(new { error = "Automation is disabled." });
+            if (automationStatus.Snapshot().CycleRunning)
+                return Results.Conflict(new { error = "An automation cycle is already running." });
+
+            var requestedAt = clock.UtcNow;
+            wakeSignal.Wake();
+            return Results.Accepted(value: new { requestedAt });
+        });
+
         app.MapGet("/api/v1/storage", async (
             IShareRepository shares,
             IFileSystemGateway fileSystem,

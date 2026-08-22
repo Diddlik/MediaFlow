@@ -384,6 +384,12 @@ button.stat:hover { background: var(--panel); }
 }
 .progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: var(--inset); }
 .progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--acc); transition: width .2s ease; }
+.event-scan-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+}
+.event-scan-time { margin-top: 3px; color: var(--mut); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.event-scan-time.error { color: var(--red); }
 
 /* Tables -------------------------------------------------------------- */
 .table-scroll { overflow-x: auto; }

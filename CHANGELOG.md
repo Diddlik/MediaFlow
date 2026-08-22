@@ -6,6 +6,10 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+### Added
+
+- the running-event card shows a live countdown to the next scheduled automation cycle and provides a guarded **Scan now** action.
+
 ## [1.0.3] - 2026-08-22
 
 ### Added

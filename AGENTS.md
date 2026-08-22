@@ -80,6 +80,7 @@ If any `[TO FILL]` entry remains, complete this onboarding before implementing t
 - Platform-specific constraints: The production Docker image is Linux-based and includes ExifTool. Development is supported on Windows; keep path handling platform-neutral and validate mounted container paths. Use serial .NET build/test commands on Windows to avoid intermittent file-lock contention.
 - UI task behavior: Long-running browser actions use the global background-task tracker so in-app navigation does not hide progress or allow duplicate starts. Tasks do not persist across a manual browser reload or a closed tab.
 - Metadata processing: Routing reuses indexed capture metadata only when source size and last-write time still match. New or changed files use bounded ExifTool parallelism from runtime settings (default 2, range 1-8); SQLite matching and transfers remain controlled. Full-file SHA-256 reads remain mandatory for Safe Move verification.
+- Manual automation: `POST /api/v1/automation/run` only queues the existing single-reader worker when automation is enabled and idle. The Running event card displays the periodic countdown and disables duplicate manual triggers.
 
 Do not begin implementation while `[TO FILL]` entries remain. Follow the guided onboarding above instead.
 
