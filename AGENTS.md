@@ -1,0 +1,93 @@
+# Shared Agent Instructions
+
+This file is the canonical instruction source for Codex, Claude Code, and GitHub Copilot CLI.
+
+## Maintenance
+
+- Keep this file synchronized with the repository's verified behavior.
+- Update this file in the same change when build commands, validation steps, architecture constraints, workflows, or conventions change.
+- Remove obsolete instructions instead of appending corrections.
+- Record only durable facts that are not obvious from the codebase.
+- Tool-specific instruction files may contain only an import of this file and genuine tool-specific exceptions.
+
+## First-use onboarding
+
+If any `[TO FILL]` entry remains, complete this onboarding before implementing the user's first task:
+
+1. Inspect the repository and determine every project fact that can be verified from existing files and commands.
+2. Do not ask the user for information that can be discovered reliably from the repository.
+3. Briefly present the discovered facts, then ask guided questions only for the remaining decisions or unknowns.
+4. Ask one focused question or one closely related group of no more than three questions at a time. Explain why each answer matters and offer a recommended option when useful while allowing a free-form answer.
+5. Cover the remaining topics in this order: purpose and scope, runtimes and platforms, build and validation commands, environment requirements, then architecture and generated-file constraints.
+6. After the user answers, replace the applicable placeholders with concise verified facts, remove entries that do not apply, and record unresolved decisions explicitly as `OPEN` rather than inventing an answer.
+7. Summarize what was written to this file, then continue with the user's original task.
+
+## Implementation
+
+- Implement only what the current requirement needs.
+- Prefer editing existing code over adding files, layers, helpers, or abstractions.
+- Use the standard library and existing dependencies before writing custom implementations.
+- Do not add speculative extension points, configuration, parameters, or abstractions.
+- Add a dependency only when it provides a concrete benefit and does not duplicate existing functionality.
+- Preserve validation, security, accessibility, error handling, and data-integrity safeguards.
+
+## Language and comments
+
+- Use English for source code, identifiers, comments, tests, documentation, logs, and commit messages.
+- Comments explain why a decision, constraint, workaround, or non-obvious trade-off exists.
+- Do not comment what readable code already expresses.
+- Prefer clear naming and small functions over explanatory comments.
+
+## Working method
+
+- Inspect the relevant implementation and existing conventions before editing.
+- Search for an existing implementation before creating a new one.
+- Make the smallest coherent change that fully satisfies the request.
+- Preserve unrelated user changes.
+- Do not perform unrelated refactoring during a focused change.
+- Ask before destructive, irreversible, security-sensitive, or materially out-of-scope actions.
+
+## Verification
+
+- Run the narrowest relevant test, build, lint, format, or executable check after the last change.
+- Add or update tests for non-trivial behavior changes and bug fixes.
+- Do not claim success without current verification evidence.
+- Report what was verified and what could not be verified.
+- Distinguish product failures from environment, permission, network, and tooling failures.
+
+## Security
+
+- Never commit, print, store, or document secrets, tokens, credentials, or private keys.
+- Validate data at user, file, environment, process, and network boundaries.
+- Preserve authentication, authorization, escaping, permission checks, and safe defaults.
+- Do not weaken security controls to make tests or local execution pass.
+
+## Project facts
+
+- Purpose: Self-hosted service that discovers synchronized photos and videos, matches capture timestamps to events, and safely routes media from source shares to shared destinations.
+- Primary languages and runtimes: C# on .NET 10 / ASP.NET Core; browser UI in plain JavaScript, HTML, and CSS; SQLite persistence.
+- Important entry points: `src/MediaFlow.Web/Program.cs` composes the API and workers; `src/MediaFlow.Web/wwwroot/app.js` drives the Web UI; `src/MediaFlow.Web/Background/MediaRoutingWorker.cs` runs automated routing.
+- Build command: `dotnet build MediaFlow.sln -c Release --no-restore -m:1` after `dotnet restore MediaFlow.sln`.
+- Test command: `dotnet test MediaFlow.sln -c Release --no-build -m:1` after a successful Release build.
+- Single test command: `dotnet test tests/MediaFlow.Tests/MediaFlow.Tests.csproj -c Release --no-build -m:1 --filter FullyQualifiedName~SafeTransferServiceTests`.
+- Lint and format command: `dotnet format MediaFlow.sln --verify-no-changes --no-restore`.
+- Local run command: `dotnet run --project src/MediaFlow.Web/MediaFlow.Web.csproj -c Release --no-build --urls http://127.0.0.1:5080`.
+- Required environment: .NET 10 SDK for development; ExifTool for local metadata extraction; Docker with Compose for the supported container deployment. Mounted source and destination paths must be readable or writable according to their configured roles.
+- Module map: `MediaFlow.Core/Domain` holds entities and enums only; `MediaFlow.Application/Services` holds the routing and transfer use cases (`SafeTransferService`, `TransferCoordinator`, `RoutingPreviewService`, `OperationRecoveryService`); `MediaFlow.Infrastructure` holds SQLite repositories, ExifTool metadata, and the filesystem gateway; `MediaFlow.Web/Api` holds minimal-API endpoint groups and `MediaFlow.Web/Background` the workers.
+- Architecture constraints: Dependencies flow from Core to Application to Infrastructure to Web. Core must not depend on ASP.NET, MQTT, ExifTool, or persistence infrastructure. Filesystem paths are the sync-tool-agnostic integration boundary. Safe Move may delete a source only after the destination is committed and its size and SHA-256 match.
+- Generated files: `bin/`, `obj/`, local SQLite databases, and `data/runtime-settings.json` are build or runtime outputs.
+- Files or directories not to edit manually: Do not edit `bin/`, `obj/`, SQLite database files, or persisted runtime settings by hand. Add schema changes through the versioned migration code documented in `docs/DATABASE-MIGRATIONS.md`.
+- Platform-specific constraints: The production Docker image is Linux-based and includes ExifTool. Development is supported on Windows; keep path handling platform-neutral and validate mounted container paths. Use serial .NET build/test commands on Windows to avoid intermittent file-lock contention.
+
+Do not begin implementation while `[TO FILL]` entries remain. Follow the guided onboarding above instead.
+
+## Definition of done
+
+A change is complete when:
+
+- The requested behavior is implemented.
+- Relevant verification passes after the final edit.
+- Appropriate error paths and edge cases are handled.
+- Documentation and this file reflect changed behavior or workflows.
+- No unrelated files, abstractions, or dependencies were introduced.
+- Remaining limitations and unverified points are stated clearly.
