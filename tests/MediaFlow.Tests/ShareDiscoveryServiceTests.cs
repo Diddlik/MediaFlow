@@ -27,6 +27,23 @@ public sealed class ShareDiscoveryServiceTests : IDisposable
         Assert.Equal(5, service.Scan(share, 5).Count);
     }
 
+    [Fact]
+    public void Enumerate_IgnoresSynologyMetadataDirectories()
+    {
+        var album = Directory.CreateDirectory(Path.Combine(root, "album"));
+        var metadata = Directory.CreateDirectory(Path.Combine(album.FullName, "@eaDir", "photo.jpg"));
+        File.WriteAllText(Path.Combine(album.FullName, "photo.jpg"), "photo");
+        File.WriteAllText(Path.Combine(metadata.FullName, "SYNOFILE_THUMB_M.jpg"), "thumbnail");
+
+        var service = new ShareDiscoveryService(
+            new LocalFileSystemGateway(),
+            new FixedClock(DateTimeOffset.UnixEpoch));
+        var share = new Share { Name = "pavel", Path = root, Role = ShareRole.Source };
+
+        var file = Assert.Single(service.Enumerate(share));
+        Assert.Equal("album/photo.jpg", file.RelativePath);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(root)) Directory.Delete(root, recursive: true);

@@ -255,6 +255,8 @@ The photo still belongs to the event.
 Recommended behavior:
 
 - every stable newly discovered media file is checked against active and recently closed events;
+- bounded routing cycles prioritize unindexed files, then the least recently evaluated files, so large sources make persistent progress across restarts;
+- platform metadata below Synology `@eaDir` directories is excluded from discovery;
 - event matching uses capture timestamp;
 - default event lookback: 90 days;
 - archived events no longer receive automatic matches.

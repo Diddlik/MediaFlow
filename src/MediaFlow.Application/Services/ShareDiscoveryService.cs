@@ -91,7 +91,9 @@ public sealed class ShareDiscoveryService(IFileSystemGateway fileSystem, IClock 
     private static bool IsIgnored(string relativePath, IReadOnlyList<string> patterns)
     {
         if (relativePath.StartsWith(".mediaflow-staging/", StringComparison.Ordinal) ||
-            string.Equals(relativePath, ".mediaflow-staging", StringComparison.Ordinal))
+            string.Equals(relativePath, ".mediaflow-staging", StringComparison.Ordinal) ||
+            relativePath.StartsWith("@eaDir/", StringComparison.Ordinal) ||
+            relativePath.Contains("/@eaDir/", StringComparison.Ordinal))
         {
             return true;
         }

@@ -22,6 +22,23 @@ public sealed class SqliteMediaFileRepository(SqliteConnectionFactory connection
         return result;
     }
 
+    public async Task<IReadOnlyList<MediaFile>> ListBySourceAsync(
+        Guid sourceShareId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new List<MediaFile>();
+        await using var connection = await connectionFactory.OpenAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {SelectColumns} FROM media_files WHERE source_share_id = $shareId";
+        command.Parameters.AddWithValue("$shareId", sourceShareId.ToString("D"));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            result.Add(Read(reader));
+        }
+        return result;
+    }
+
     public async Task<MediaFile?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await using var connection = await connectionFactory.OpenAsync(cancellationToken);

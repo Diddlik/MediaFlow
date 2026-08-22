@@ -18,8 +18,14 @@ public sealed class RoutingPreviewService(
         int limit,
         CancellationToken cancellationToken = default)
     {
-        var stableFiles = discovery.Scan(sourceShare, Math.Max(limit * 5, limit))
+        var indexedFiles = (await mediaFiles.ListBySourceAsync(sourceShare.Id, cancellationToken))
+            .ToDictionary(x => x.SourcePath, StringComparer.Ordinal);
+        var stableFiles = discovery.Enumerate(sourceShare)
             .Where(x => x.State == DiscoveryState.Stable)
+            .OrderBy(x => indexedFiles.TryGetValue(x.FullPath, out var indexed)
+                ? indexed.LastSeenAt
+                : DateTimeOffset.MinValue)
+            .ThenBy(x => x.FullPath, StringComparer.Ordinal)
             .Take(limit)
             .ToArray();
 
@@ -44,7 +50,7 @@ public sealed class RoutingPreviewService(
             var fallbackMessage = metadata.CapturedAt is null && metadata.Error is not null
                 ? $"Metadata unavailable; FileLastWriteTimeUtc used as fallback. {metadata.Error}"
                 : null;
-            var existing = await mediaFiles.GetBySourceAsync(sourceShare.Id, file.FullPath, cancellationToken);
+            indexedFiles.TryGetValue(file.FullPath, out var existing);
             var now = clock.UtcNow;
 
             var mediaFile = new MediaFile

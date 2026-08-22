@@ -6,6 +6,13 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.0.1] - 2026-08-22
+
+### Fixed
+
+- bounded routing cycles now persistently rotate through large source shares instead of repeatedly evaluating the same first batch, preventing newer event media from starving;
+- Synology `@eaDir` metadata thumbnails are excluded from media discovery regardless of the selected sync-tool preset.
+
 ## [1.0.0] - 2026-08-22
 
 ### Added
