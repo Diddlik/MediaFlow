@@ -6,6 +6,18 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.2.0] - 2026-08-22
+
+### Added
+
+- creating, editing or deleting an event now re-matches already-indexed media inside the affected capture window instead of waiting for the least-recently-evaluated sweep to reach it, so an event defined after the photos arrived is applied on the next automation cycle.
+
+### Changed
+
+- filesystem-watcher notifications now carry the changed path, so a routing cycle triggered by new media evaluates only that file instead of walking and stat-ing the entire source share. Full share walks now run only on the periodic schedule, on manual scans, on watcher errors, and when more than 1000 paths are pending for one share;
+- the periodic reconciliation interval default increases from 300 to 1800 seconds, because the watcher now covers new-file latency and the periodic walk only has to act as a correctness backstop. Existing installations keep their saved value in `data/runtime-settings.json`; change it in the Web UI to adopt the new default;
+- the reconciliation interval is now a rest gap measured after a cycle finishes rather than a fixed period, so a share that takes longer than the interval to walk no longer runs walks back to back.
+
 ## [1.1.0] - 2026-08-22
 
 ### Changed
