@@ -24,6 +24,7 @@ The example deliberately does not enable Watchtower cleanup, so the previous ima
 2. Review the stable version and changelog.
 3. Select **Install update** and enter `INSTALL_UPDATE`.
 4. The companion pulls the configured image and recreates MediaFlow.
+5. The Web UI waits for the replacement container, confirms the expected running version and reloads itself. A dropped install request is expected while the old container stops and is not reported as failure unless the replacement cannot be confirmed within three minutes.
 
 After the replacement container answers its first status request with the expected release version, MediaFlow records the update as completed in `data/update-status.json`.
 

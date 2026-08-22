@@ -41,6 +41,7 @@ public sealed class ImageUpdateService(
         status ??= await statusStore.LoadAsync(cancellationToken);
         var current = (status ?? EmptyStatus(runtime.AutomaticImageUpdatesEnabled)) with
         {
+            RunningVersion = options.RunningVersion,
             AutomaticUpdatesEnabled = runtime.AutomaticImageUpdatesEnabled
         };
         if (current.LastUpdateRequestedAt is not null &&

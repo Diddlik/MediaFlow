@@ -6,6 +6,17 @@ The project follows semantic versioning for tagged releases. Until v1.0, breakin
 
 ## Unreleased
 
+## [1.0.2] - 2026-08-22
+
+### Added
+
+- long-running path checks, scans, metadata reads, routing previews, transfers, retries and image updates remain active during in-app navigation and report their result in a global background-task panel;
+
+### Fixed
+
+- the update UI now treats the updater-triggered connection drop as an expected restart, waits for the requested version and reloads automatically;
+- persisted update status now reports the version of the running application immediately after restart instead of briefly showing the previous version.
+
 ## [1.0.1] - 2026-08-22
 
 ### Fixed

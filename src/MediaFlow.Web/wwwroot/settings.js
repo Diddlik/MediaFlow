@@ -19,7 +19,9 @@ async function settingsRequest(url, options = {}) {
       const body = await response.json();
       message = body.error || body.title || body.detail || message;
     } catch {}
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
   return response.status === 204 ? null : response.json();
@@ -287,7 +289,12 @@ function renderImageUpdate(status) {
 async function checkImageUpdate() {
   $('imageUpdateStatus').textContent = 'Checking for stable image updates…';
   try {
-    renderImageUpdate(await settingsRequest('/api/v1/updates/check', { method: 'POST' }));
+    const status = await runBackgroundTask(
+      'image-update-check',
+      'Check for image updates',
+      'updates',
+      () => settingsRequest('/api/v1/updates/check', { method: 'POST' }));
+    renderImageUpdate(status);
   } catch (error) {
     $('imageUpdateStatus').textContent = `Update check failed: ${error.message}`;
   }
@@ -295,17 +302,48 @@ async function checkImageUpdate() {
 
 $('checkImageUpdate').addEventListener('click', checkImageUpdate);
 
+async function waitForUpdatedMediaFlow(expectedVersion, timeoutMs = 180000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      const status = await settingsRequest('/api/v1/updates', { cache: 'no-store' });
+      if (status.runningVersion === expectedVersion && !status.updateAvailable) return status;
+    } catch {}
+  }
+  throw new Error(`MediaFlow did not return with version ${expectedVersion} within three minutes.`);
+}
+
 $('installImageUpdate').addEventListener('click', async () => {
   const confirmation = prompt('The MediaFlow container will restart. Type INSTALL_UPDATE to continue.');
   if (confirmation !== 'INSTALL_UPDATE') return;
+
+  const expectedVersion = updateInfo.latestVersion;
+  const statusText = $('imageUpdateStatus');
+  const install = $('installImageUpdate');
+  install.disabled = true;
+  statusText.textContent = `Installing ${expectedVersion}. MediaFlow will restart…`;
+
   try {
-    renderImageUpdate(await settingsRequest('/api/v1/updates/install', {
-      method: 'POST',
-      body: JSON.stringify({ confirmation })
-    }));
-    $('imageUpdateStatus').textContent = 'Update requested. MediaFlow may restart shortly.';
+    const status = await runBackgroundTask('image-update', `Install ${expectedVersion}`, 'updates', async () => {
+      try {
+        await settingsRequest('/api/v1/updates/install', {
+          method: 'POST',
+          body: JSON.stringify({ confirmation })
+        });
+      } catch (error) {
+        if (error.status) throw error;
+      }
+
+      statusText.textContent = 'Update requested. Waiting for MediaFlow to restart…';
+      return waitForUpdatedMediaFlow(expectedVersion);
+    });
+    renderImageUpdate(status);
+    statusText.textContent = `Updated to ${status.runningVersion}. Reloading…`;
+    window.location.reload();
   } catch (error) {
-    $('imageUpdateStatus').textContent = `Update failed: ${error.message}`;
+    statusText.textContent = `Update failed: ${error.message}`;
+    install.disabled = false;
   }
 });
 

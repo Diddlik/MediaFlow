@@ -81,6 +81,17 @@
         </div>
       </header>
 
+      <section class="task-center hidden" id="taskCenter" aria-label="Background tasks">
+        <div class="task-center-head">
+          <div>
+            <div class="kicker">Background tasks</div>
+            <div class="task-center-summary" id="taskCenterSummary" role="status" aria-live="polite" aria-atomic="true"></div>
+          </div>
+          <button class="link-btn muted" type="button" id="clearFinishedTasks">Clear finished</button>
+        </div>
+        <div class="task-list" id="backgroundTaskList"></div>
+      </section>
+
       <!-- OVERVIEW ---------------------------------------------------- -->
       <section class="view" id="view-overview" aria-labelledby="pageTitle">
         <div class="card hidden" id="onboardingPanel">
@@ -414,7 +425,7 @@
           <div class="row" style="justify-content:space-between;align-items:center">
             <div>
               <div class="card-title" id="updateHeadline" style="color:var(--acctxt)">Checking for updates…</div>
-              <div class="card-sub" id="imageUpdateStatus">No update check performed yet.</div>
+              <div class="card-sub" id="imageUpdateStatus" aria-live="polite">No update check performed yet.</div>
             </div>
             <div class="actions">
               <button class="btn" type="button" id="checkImageUpdate">Check for updates</button>

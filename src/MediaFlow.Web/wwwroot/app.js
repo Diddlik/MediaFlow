@@ -20,6 +20,8 @@ let storageInfo = null;
 let updateInfo = null;
 
 let currentView = 'overview';
+const backgroundTasks = new Map();
+let taskClock = null;
 
 const TITLES = {
   overview: ['Overview', 'Every watched folder, the running event and anything waiting on you.'],
@@ -136,6 +138,83 @@ async function request(url, options = {}) {
   }
   return response.status === 204 ? null : response.json();
 }
+
+/* Background tasks --------------------------------------------------- */
+
+function taskDuration(task) {
+  const seconds = Math.max(0, Math.floor(((task.finishedAt || Date.now()) - task.startedAt) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function renderBackgroundTasks() {
+  const tasks = [...backgroundTasks.values()].sort((a, b) => b.startedAt - a.startedAt);
+  const running = tasks.filter(task => task.state === 'running').length;
+  $('taskCenter').classList.toggle('hidden', !tasks.length);
+  if (!tasks.length) return;
+
+  $('taskCenterSummary').textContent = running
+    ? `${running} running · you can change views`
+    : `${tasks.length} finished`;
+  $('clearFinishedTasks').classList.toggle('hidden', tasks.every(task => task.state === 'running'));
+  $('backgroundTaskList').innerHTML = tasks.slice(0, 6).map(task => {
+    const state = task.state === 'running' ? 'Running' : task.state === 'success' ? 'Completed' : 'Failed';
+    const dot = task.state === 'running' ? 'dot-amb' : task.state === 'success' ? 'dot-acc' : 'dot-red';
+    const content = `
+      <span class="dot ${dot}"></span>
+      <span class="task-row-main">
+        <span class="task-row-label">${escapeHtml(task.label)}</span>
+        <span class="task-row-detail">${escapeHtml(task.detail || state)}</span>
+      </span>
+      <span class="task-row-time">${taskDuration(task)}</span>`;
+    return task.view
+      ? `<button class="task-row task-${task.state}" type="button" data-view="${escapeHtml(task.view)}">${content}</button>`
+      : `<div class="task-row task-${task.state}">${content}</div>`;
+  }).join('');
+}
+
+function updateTaskClock() {
+  const running = [...backgroundTasks.values()].some(task => task.state === 'running');
+  if (running && !taskClock) taskClock = setInterval(renderBackgroundTasks, 1000);
+  if (!running && taskClock) {
+    clearInterval(taskClock);
+    taskClock = null;
+  }
+}
+
+window.runBackgroundTask = function (key, label, view, action) {
+  const existing = backgroundTasks.get(key);
+  if (existing?.state === 'running') return existing.promise;
+
+  const task = { key, label, view, state: 'running', detail: 'Running', startedAt: Date.now() };
+  backgroundTasks.set(key, task);
+  renderBackgroundTasks();
+  updateTaskClock();
+
+  task.promise = Promise.resolve().then(action).then(result => {
+    task.state = 'success';
+    task.detail = 'Completed';
+    task.finishedAt = Date.now();
+    return result;
+  }).catch(error => {
+    task.state = 'error';
+    task.detail = error.message || String(error);
+    task.finishedAt = Date.now();
+    throw error;
+  }).finally(() => {
+    renderBackgroundTasks();
+    updateTaskClock();
+  });
+
+  return task.promise;
+};
+
+$('clearFinishedTasks').addEventListener('click', () => {
+  backgroundTasks.forEach((task, key) => {
+    if (task.state !== 'running') backgroundTasks.delete(key);
+  });
+  renderBackgroundTasks();
+});
 
 /* Theme --------------------------------------------------------------- */
 
@@ -729,11 +808,16 @@ function renderRoutingSources() {
 async function previewRouting() {
   const id = $('routingSource').value;
   if (!id) return;
+  const share = shares.find(item => item.id === id);
   $('routingSummary').textContent = '';
   $('routingList').innerHTML = '<div class="empty">Scanning stable files and evaluating events…</div>';
 
   try {
-    const result = await request(`/api/v1/shares/${id}/routing-preview?limit=2000`);
+    const result = await runBackgroundTask(
+      `routing-preview:${id}`,
+      `Routing preview · ${share?.name || 'source'}`,
+      'preview',
+      () => request(`/api/v1/shares/${id}/routing-preview?limit=2000`));
     const dry = appInfo.dryRun !== false;
 
     const rows = result.items.map(item => {
@@ -784,9 +868,14 @@ async function previewRouting() {
 
 window.probeShare = async function (id) {
   const state = $(`state-${id}`);
+  const share = shares.find(item => item.id === id);
   state.textContent = 'Testing path…';
   try {
-    const result = await request(`/api/v1/shares/${id}/probe`);
+    const result = await runBackgroundTask(
+      `share-probe:${id}`,
+      `Test path · ${share?.name || 'share'}`,
+      'shares',
+      () => request(`/api/v1/shares/${id}/probe`));
     state.textContent = result.exists && result.readable
       ? 'Path OK · readable'
       : `Path problem · ${result.error || (result.exists ? 'not readable' : 'not found')}`;
@@ -797,9 +886,14 @@ window.probeShare = async function (id) {
 
 window.scanShare = async function (id) {
   const state = $(`state-${id}`);
+  const share = shares.find(item => item.id === id);
   state.textContent = 'Scanning…';
   try {
-    const result = await request(`/api/v1/shares/${id}/scan?limit=1`);
+    const result = await runBackgroundTask(
+      `share-scan:${id}`,
+      `Scan · ${share?.name || 'source'}`,
+      'shares',
+      () => request(`/api/v1/shares/${id}/scan?limit=1`));
     state.textContent = `${result.total} media files · ${result.stable} stable · ${result.waitingStable} waiting`;
   } catch (error) {
     state.textContent = `Scan failed · ${error.message}`;
@@ -808,9 +902,14 @@ window.scanShare = async function (id) {
 
 window.metadataPreview = async function (id) {
   const state = $(`state-${id}`);
+  const share = shares.find(item => item.id === id);
   state.textContent = 'Reading metadata…';
   try {
-    const result = await request(`/api/v1/shares/${id}/metadata-preview?limit=5`);
+    const result = await runBackgroundTask(
+      `metadata-preview:${id}`,
+      `Metadata · ${share?.name || 'source'}`,
+      'shares',
+      () => request(`/api/v1/shares/${id}/metadata-preview?limit=5`));
     if (!result.items.length) {
       state.textContent = 'No stable media yet. Scan again after the stability interval.';
       return;
@@ -933,10 +1032,14 @@ window.executeTransfer = async function (mediaFileId, eventId) {
   if (!confirm(`MediaFlow will ${action}. Continue?`)) return;
 
   try {
-    const result = await request('/api/v1/transfers', {
-      method: 'POST',
-      body: JSON.stringify({ mediaFileId, eventId })
-    });
+    const result = await runBackgroundTask(
+      `transfer:${mediaFileId}`,
+      `Transfer · ${event?.name || 'event'}`,
+      'ops',
+      () => request('/api/v1/transfers', {
+        method: 'POST',
+        body: JSON.stringify({ mediaFileId, eventId })
+      }));
     alert(result.message || `Transfer finished: ${result.operation.state}`);
     await refreshOperations();
     await previewRouting();
@@ -963,7 +1066,11 @@ window.dismissQuarantine = async function (id) {
 window.retryQuarantine = async function (id) {
   if (!confirm('Retry this held transfer from the preserved source file?')) return;
   try {
-    await request(`/api/v1/operations/${id}/retry`, { method: 'POST' });
+    await runBackgroundTask(
+      `quarantine-retry:${id}`,
+      'Retry held transfer',
+      'ops',
+      () => request(`/api/v1/operations/${id}/retry`, { method: 'POST' }));
     $('quarantineMessage').textContent = 'Held transfer retried.';
     await Promise.all([refreshQuarantine(), refreshOperations()]);
   } catch (error) {

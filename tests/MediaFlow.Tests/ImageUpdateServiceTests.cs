@@ -115,6 +115,7 @@ public sealed class ImageUpdateServiceTests
 
         var status = await service.GetStatusAsync();
 
+        Assert.Equal("1.2.0", status.RunningVersion);
         Assert.False(status.UpdateAvailable);
         Assert.Equal(new DateTimeOffset(2026, 8, 21, 20, 0, 0, TimeSpan.Zero), status.LastUpdateCompletedAt);
         Assert.Null(status.LastError);

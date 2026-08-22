@@ -173,6 +173,26 @@ code, .mono { font-family: var(--mono); }
 
 .view { display: flex; flex-direction: column; gap: 16px; }
 
+.task-center {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 12px; padding: 13px 16px;
+}
+.task-center-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.task-center-summary { margin-top: 3px; color: var(--mut); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.task-list { display: grid; gap: 1px; margin-top: 10px; background: var(--line); border-radius: 8px; overflow: hidden; }
+.task-row {
+  min-height: 42px; width: 100%; display: flex; align-items: center; gap: 10px; padding: 9px 11px;
+  border: 0; background: var(--inset); color: var(--txt); text-align: left; font: inherit;
+}
+button.task-row { cursor: pointer; }
+button.task-row:hover { background: var(--panel); }
+.task-row:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.task-row-main { min-width: 0; flex: 1; }
+.task-row-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; }
+.task-row-detail { display: block; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--mut); font-size: 11.5px; }
+.task-row-time { flex: none; color: var(--dim); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.task-running .dot { animation: task-pulse 1.2s ease-in-out infinite; }
+@keyframes task-pulse { 50% { opacity: .35; transform: scale(.75); } }
+
 /* Primitives ---------------------------------------------------------- */
 .kicker {
   font-size: 10.5px; letter-spacing: .09em; color: var(--dim); text-transform: uppercase;
@@ -485,4 +505,5 @@ button.guide-step:hover { background: var(--panel); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
+  .task-running .dot { animation: none; }
 }
