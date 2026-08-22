@@ -24,7 +24,7 @@ public static class RoutingEndpoints
 
             try
             {
-                var items = await routing.PreviewAsync(share, Math.Clamp(limit ?? 25, 1, 100), ct);
+                var items = await routing.PreviewAsync(share, Math.Clamp(limit ?? 2000, 1, 2000), ct);
                 return Results.Ok(new
                 {
                     share.Id,

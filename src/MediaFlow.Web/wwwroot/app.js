@@ -733,7 +733,7 @@ async function previewRouting() {
   $('routingList').innerHTML = '<div class="empty">Scanning stable files and evaluating events…</div>';
 
   try {
-    const result = await request(`/api/v1/shares/${id}/routing-preview?limit=50`);
+    const result = await request(`/api/v1/shares/${id}/routing-preview?limit=2000`);
     const dry = appInfo.dryRun !== false;
 
     const rows = result.items.map(item => {
